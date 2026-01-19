@@ -2,12 +2,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/aflock-ai/aflock/internal/hooks"
+	"github.com/aflock-ai/aflock/internal/verify"
 )
 
 var (
@@ -92,8 +94,29 @@ var verifyCmd = &cobra.Command{
 
 If no session ID is provided, verifies the most recent session.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement verification
-		fmt.Println("Verification not yet implemented")
+		verifier := verify.NewVerifier()
+
+		var result *verify.Result
+		var err error
+
+		if len(args) > 0 {
+			result, err = verifier.VerifySession(args[0])
+		} else {
+			result, err = verifier.VerifyLatestSession()
+		}
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Verification failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Output result as JSON
+		output, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(output))
+
+		if !result.Success {
+			os.Exit(1)
+		}
 	},
 }
 
@@ -101,8 +124,27 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show current session status",
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement status display
-		fmt.Println("Status not yet implemented")
+		verifier := verify.NewVerifier()
+		sessions, err := verifier.ListSessions()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list sessions: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(sessions) == 0 {
+			fmt.Println("No active sessions found")
+			return
+		}
+
+		fmt.Printf("Found %d session(s):\n\n", len(sessions))
+		for _, s := range sessions {
+			fmt.Printf("  Session: %s\n", s.SessionID)
+			fmt.Printf("  Policy:  %s\n", s.PolicyName)
+			fmt.Printf("  Started: %s\n", s.StartedAt.Format("2006-01-02 15:04:05"))
+			fmt.Printf("  Turns:   %d\n", s.Turns)
+			fmt.Printf("  Tools:   %d\n", s.ToolCalls)
+			fmt.Println()
+		}
 	},
 }
 
