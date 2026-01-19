@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "name": "test-policy",
+
+  "identity": {
+    "allowedModels": ["claude-opus-*", "claude-sonnet-*"],
+    "allowedEnvironments": ["container:*", "local"]
+  },
+
+  "limits": {
+    "maxSpendUSD": { "value": 5.00, "enforcement": "fail-fast" },
+    "maxTurns": { "value": 10, "enforcement": "post-hoc" }
+  },
+
+  "tools": {
+    "allow": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+    "deny": ["Task"],
+    "requireApproval": ["Bash:rm *", "Bash:git push"]
+  },
+
+  "files": {
+    "allow": ["**/*.go", "**/*.md", "**/*.json"],
+    "deny": ["**/.env", "**/secrets/**"],
+    "readOnly": ["go.mod", "go.sum"]
+  },
+
+  "functionaries": [
+    {
+      "type": "spiffe",
+      "trustDomain": "aflock.ai",
+      "spiffeIdPattern": "spiffe://aflock.ai/agent/claude-opus/*",
+      "modelConstraint": "claude-opus-*",
+      "versionConstraint": ">=4.0.0"
+    },
+    {
+      "type": "spiffe",
+      "trustDomain": "aflock.ai",
+      "spiffeIdPattern": "spiffe://aflock.ai/agent/claude-sonnet/*",
+      "modelConstraint": "claude-sonnet-*",
+      "versionConstraint": ">=4.0.0"
+    },
+    {
+      "type": "keyless",
+      "issuer": "https://accounts.google.com",
+      "subject": "admin@example.com"
+    }
+  ]
+}

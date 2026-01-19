@@ -1,0 +1,14 @@
+{
+  "name": "aflock",
+  "version": "0.1.0",
+  "description": "Cryptographically signed policy enforcement for AI agents",
+  "author": {
+    "name": "TestifySec",
+    "url": "https://testifysec.com"
+  },
+  "homepage": "https://github.com/aflock-ai/aflock",
+  "repository": "https://github.com/aflock-ai/aflock",
+  "license": "Proprietary",
+  "keywords": ["security", "policy", "attestation", "spiffe", "spire"],
+  "hooks": "./hooks/hooks.json"
+}

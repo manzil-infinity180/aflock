@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "name": "default-policy",
+
+  "limits": {
+    "maxSpendUSD": { "value": 10.00, "enforcement": "fail-fast" },
+    "maxTokensIn": { "value": 500000, "enforcement": "fail-fast" },
+    "maxTurns": { "value": 50, "enforcement": "post-hoc" }
+  },
+
+  "tools": {
+    "allow": ["Read", "Edit", "Write", "Glob", "Grep", "Bash", "LSP", "WebFetch", "WebSearch"],
+    "deny": ["Task"],
+    "requireApproval": [
+      "Bash:rm -rf *",
+      "Bash:git push --force",
+      "Bash:git reset --hard",
+      "Write:*.env",
+      "Edit:**/secrets/**"
+    ]
+  },
+
+  "files": {
+    "allow": ["src/**", "tests/**", "docs/**", "*.md", "*.json", "*.yaml", "*.yml"],
+    "deny": ["**/.env", "**/secrets/**", "**/credentials.*", "**/*.pem", "**/*.key"],
+    "readOnly": ["package.json", "package-lock.json", "go.mod", "go.sum"]
+  },
+
+  "domains": {
+    "allow": ["github.com", "*.anthropic.com", "docs.*", "api.*"],
+    "deny": []
+  },
+
+  "requiredAttestations": [],
+
+  "evaluators": {
+    "rego": [],
+    "ai": []
+  },
+
+  "functionaries": [
+    {
+      "type": "keyless",
+      "issuer": "https://accounts.google.com",
+      "subject": ""
+    }
+  ]
+}
