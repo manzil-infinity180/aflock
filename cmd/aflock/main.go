@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/aflock-ai/aflock/internal/hooks"
+	"github.com/aflock-ai/aflock/internal/mcp"
 	"github.com/aflock-ai/aflock/internal/verify"
 )
 
@@ -161,6 +162,40 @@ This creates a signed policy that cannot be modified by the agent.`,
 	},
 }
 
+var servePolicyPath string
+
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the aflock MCP server",
+	Long: `Start the aflock MCP server on stdio.
+
+The MCP server provides tools for AI agents with policy enforcement:
+- get_identity: Get the agent's derived identity
+- get_policy: Get the loaded .aflock policy
+- check_tool: Check if a tool call would be allowed
+- bash: Execute commands with policy enforcement
+- read_file: Read files with policy enforcement
+- write_file: Write files with policy enforcement
+- get_session: Get current session metrics
+
+Configure in Claude Code settings.json:
+{
+  "mcpServers": {
+    "aflock": {
+      "command": "aflock",
+      "args": ["serve"]
+    }
+  }
+}`,
+	Run: func(cmd *cobra.Command, args []string) {
+		server := mcp.NewServer()
+		if err := server.Serve(servePolicyPath); err != nil {
+			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
+			os.Exit(1)
+		}
+	},
+}
+
 var hookFlag string
 
 func init() {
@@ -169,9 +204,13 @@ func init() {
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(signCmd)
+	rootCmd.AddCommand(serveCmd)
 
 	// Add --hook flag as alternative to hook subcommand for backwards compatibility
 	rootCmd.Flags().StringVar(&hookFlag, "hook", "", "Hook event to handle (alternative to 'hook' subcommand)")
+
+	// Serve command flags
+	serveCmd.Flags().StringVarP(&servePolicyPath, "policy", "p", "", "Path to .aflock policy file")
 }
 
 func main() {
