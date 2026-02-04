@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/aflock-ai/aflock/internal/hooks"
 	"github.com/aflock-ai/aflock/internal/mcp"
+	"github.com/aflock-ai/aflock/internal/policy"
 	"github.com/aflock-ai/aflock/internal/verify"
 )
 
@@ -88,22 +90,57 @@ var initCmd = &cobra.Command{
 	},
 }
 
+var verifyPolicyPath string
+var verifyAttestDir string
+var verifyTreeHash string
+
 var verifyCmd = &cobra.Command{
-	Use:   "verify [session-id]",
-	Short: "Verify attestations against policy",
-	Long: `Verify that attestations from a session satisfy the policy constraints.
+	Use:   "verify",
+	Short: "Verify step attestations against policy",
+	Long: `Verify step attestations for a git tree hash against a policy.
 
-If no session ID is provided, verifies the most recent session.`,
+Uses the current git tree hash if --tree-hash is not specified.
+
+The policy defines required steps (e.g., lint, test, build) and the
+verify command checks that attestations exist and are valid for each step.
+
+Examples:
+  aflock verify --policy .aflock                     # Verify steps for current git HEAD
+  aflock verify --policy .aflock --tree-hash abc123  # Verify specific tree hash
+  aflock verify -p policy.json -a ./attestations     # Custom attestation directory`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if verifyPolicyPath == "" {
+			// Try to find policy in current directory
+			cwd, _ := os.Getwd()
+			pol, path, err := policy.Load(cwd)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "No policy specified and none found in current directory.\n")
+				fmt.Fprintf(os.Stderr, "Use --policy to specify a policy file.\n")
+				os.Exit(1)
+			}
+			verifyPolicyPath = path
+			_ = pol // Will reload below
+		}
+
+		pol, _, err := policy.Load(verifyPolicyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to load policy: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Default attestation directory
+		if verifyAttestDir == "" {
+			homeDir, _ := os.UserHomeDir()
+			verifyAttestDir = filepath.Join(homeDir, ".aflock", "attestations")
+		}
+
 		verifier := verify.NewVerifier()
+		var result *verify.StepsResult
 
-		var result *verify.Result
-		var err error
-
-		if len(args) > 0 {
-			result, err = verifier.VerifySession(args[0])
+		if verifyTreeHash != "" {
+			result, err = verifier.VerifySteps(pol, verifyAttestDir, verifyTreeHash)
 		} else {
-			result, err = verifier.VerifyLatestSession()
+			result, err = verifier.VerifyTreeHash(pol, verifyAttestDir)
 		}
 
 		if err != nil {
@@ -111,7 +148,6 @@ If no session ID is provided, verifies the most recent session.`,
 			os.Exit(1)
 		}
 
-		// Output result as JSON
 		output, _ := json.MarshalIndent(result, "", "  ")
 		fmt.Println(string(output))
 
@@ -208,6 +244,11 @@ func init() {
 
 	// Add --hook flag as alternative to hook subcommand for backwards compatibility
 	rootCmd.Flags().StringVar(&hookFlag, "hook", "", "Hook event to handle (alternative to 'hook' subcommand)")
+
+	// Verify command flags
+	verifyCmd.Flags().StringVarP(&verifyPolicyPath, "policy", "p", "", "Path to .aflock policy file (enables step-based verification)")
+	verifyCmd.Flags().StringVarP(&verifyAttestDir, "attestations", "a", "", "Attestations directory (default: ~/.aflock/attestations)")
+	verifyCmd.Flags().StringVar(&verifyTreeHash, "tree-hash", "", "Git tree hash to verify (default: current HEAD)")
 
 	// Serve command flags
 	serveCmd.Flags().StringVarP(&servePolicyPath, "policy", "p", "", "Path to .aflock policy file")

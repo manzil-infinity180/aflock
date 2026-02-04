@@ -1,6 +1,6 @@
 module github.com/aflock-ai/aflock
 
-go 1.25.0
+go 1.23
 
 require (
 	github.com/gobwas/glob v0.2.3
