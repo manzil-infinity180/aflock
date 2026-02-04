@@ -2,12 +2,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/aflock-ai/aflock/internal/hooks"
+	"github.com/aflock-ai/aflock/internal/mcp"
+	"github.com/aflock-ai/aflock/internal/policy"
+	"github.com/aflock-ai/aflock/internal/verify"
 )
 
 var (
@@ -85,15 +90,70 @@ var initCmd = &cobra.Command{
 	},
 }
 
-var verifyCmd = &cobra.Command{
-	Use:   "verify [session-id]",
-	Short: "Verify attestations against policy",
-	Long: `Verify that attestations from a session satisfy the policy constraints.
+var verifyPolicyPath string
+var verifyAttestDir string
+var verifyTreeHash string
 
-If no session ID is provided, verifies the most recent session.`,
+var verifyCmd = &cobra.Command{
+	Use:   "verify",
+	Short: "Verify step attestations against policy",
+	Long: `Verify step attestations for a git tree hash against a policy.
+
+Uses the current git tree hash if --tree-hash is not specified.
+
+The policy defines required steps (e.g., lint, test, build) and the
+verify command checks that attestations exist and are valid for each step.
+
+Examples:
+  aflock verify --policy .aflock                     # Verify steps for current git HEAD
+  aflock verify --policy .aflock --tree-hash abc123  # Verify specific tree hash
+  aflock verify -p policy.json -a ./attestations     # Custom attestation directory`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement verification
-		fmt.Println("Verification not yet implemented")
+		if verifyPolicyPath == "" {
+			// Try to find policy in current directory
+			cwd, _ := os.Getwd()
+			pol, path, err := policy.Load(cwd)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "No policy specified and none found in current directory.\n")
+				fmt.Fprintf(os.Stderr, "Use --policy to specify a policy file.\n")
+				os.Exit(1)
+			}
+			verifyPolicyPath = path
+			_ = pol // Will reload below
+		}
+
+		pol, _, err := policy.Load(verifyPolicyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to load policy: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Default attestation directory
+		if verifyAttestDir == "" {
+			homeDir, _ := os.UserHomeDir()
+			verifyAttestDir = filepath.Join(homeDir, ".aflock", "attestations")
+		}
+
+		verifier := verify.NewVerifier()
+		var result *verify.StepsResult
+
+		if verifyTreeHash != "" {
+			result, err = verifier.VerifySteps(pol, verifyAttestDir, verifyTreeHash)
+		} else {
+			result, err = verifier.VerifyTreeHash(pol, verifyAttestDir)
+		}
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Verification failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		output, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(output))
+
+		if !result.Success {
+			os.Exit(1)
+		}
 	},
 }
 
@@ -101,8 +161,27 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show current session status",
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement status display
-		fmt.Println("Status not yet implemented")
+		verifier := verify.NewVerifier()
+		sessions, err := verifier.ListSessions()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list sessions: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(sessions) == 0 {
+			fmt.Println("No active sessions found")
+			return
+		}
+
+		fmt.Printf("Found %d session(s):\n\n", len(sessions))
+		for _, s := range sessions {
+			fmt.Printf("  Session: %s\n", s.SessionID)
+			fmt.Printf("  Policy:  %s\n", s.PolicyName)
+			fmt.Printf("  Started: %s\n", s.StartedAt.Format("2006-01-02 15:04:05"))
+			fmt.Printf("  Turns:   %d\n", s.Turns)
+			fmt.Printf("  Tools:   %d\n", s.ToolCalls)
+			fmt.Println()
+		}
 	},
 }
 
@@ -119,6 +198,40 @@ This creates a signed policy that cannot be modified by the agent.`,
 	},
 }
 
+var servePolicyPath string
+
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the aflock MCP server",
+	Long: `Start the aflock MCP server on stdio.
+
+The MCP server provides tools for AI agents with policy enforcement:
+- get_identity: Get the agent's derived identity
+- get_policy: Get the loaded .aflock policy
+- check_tool: Check if a tool call would be allowed
+- bash: Execute commands with policy enforcement
+- read_file: Read files with policy enforcement
+- write_file: Write files with policy enforcement
+- get_session: Get current session metrics
+
+Configure in Claude Code settings.json:
+{
+  "mcpServers": {
+    "aflock": {
+      "command": "aflock",
+      "args": ["serve"]
+    }
+  }
+}`,
+	Run: func(cmd *cobra.Command, args []string) {
+		server := mcp.NewServer()
+		if err := server.Serve(servePolicyPath); err != nil {
+			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
+			os.Exit(1)
+		}
+	},
+}
+
 var hookFlag string
 
 func init() {
@@ -127,9 +240,18 @@ func init() {
 	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(signCmd)
+	rootCmd.AddCommand(serveCmd)
 
 	// Add --hook flag as alternative to hook subcommand for backwards compatibility
 	rootCmd.Flags().StringVar(&hookFlag, "hook", "", "Hook event to handle (alternative to 'hook' subcommand)")
+
+	// Verify command flags
+	verifyCmd.Flags().StringVarP(&verifyPolicyPath, "policy", "p", "", "Path to .aflock policy file (enables step-based verification)")
+	verifyCmd.Flags().StringVarP(&verifyAttestDir, "attestations", "a", "", "Attestations directory (default: ~/.aflock/attestations)")
+	verifyCmd.Flags().StringVar(&verifyTreeHash, "tree-hash", "", "Git tree hash to verify (default: current HEAD)")
+
+	// Serve command flags
+	serveCmd.Flags().StringVarP(&servePolicyPath, "policy", "p", "", "Path to .aflock policy file")
 }
 
 func main() {

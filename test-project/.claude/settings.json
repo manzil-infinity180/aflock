@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "/Users/nkennedy/proj/aflock/bin/aflock --hook PreToolUse"
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "/Users/nkennedy/proj/aflock/bin/aflock --hook PostToolUse"
+      }]
+    }],
+    "SessionStart": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "/Users/nkennedy/proj/aflock/bin/aflock --hook SessionStart"
+      }]
+    }],
+    "SessionEnd": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "/Users/nkennedy/proj/aflock/bin/aflock --hook SessionEnd"
+      }]
+    }]
+  }
+}

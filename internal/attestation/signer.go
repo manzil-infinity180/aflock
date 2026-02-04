@@ -2,6 +2,7 @@
 package attestation
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -12,7 +13,13 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
+	"os"
 	"time"
+
+	"github.com/in-toto/go-witness/attestation"
+	"github.com/in-toto/go-witness/cryptoutil"
+	"github.com/in-toto/go-witness/dsse"
 
 	"github.com/aflock-ai/aflock/internal/identity"
 	"github.com/aflock-ai/aflock/pkg/aflock"
@@ -29,8 +36,10 @@ const (
 
 // Signer creates and signs attestations.
 type Signer struct {
-	spireClient *identity.SpireClient
-	identity    *identity.Identity
+	spireClient       *identity.SpireClient
+	identity          *identity.Identity
+	delegatedIdentity *identity.DelegatedIdentity
+	modelName         string
 }
 
 // NewSigner creates a new attestation signer.
@@ -54,6 +63,51 @@ func (s *Signer) Initialize(ctx context.Context) error {
 
 	s.identity = id
 	return nil
+}
+
+// SetModel sets the AI model name and attempts to get a delegated identity.
+// This should be called after Initialize when the model is known.
+func (s *Signer) SetModel(ctx context.Context, modelName string) error {
+	s.modelName = modelName
+
+	// Check if this is a trusted model
+	if !identity.IsTrustedModel(modelName) {
+		return fmt.Errorf("model %s is not trusted - attestations will not be signed", modelName)
+	}
+
+	// Try to get delegated identity for this model
+	delegated, err := s.spireClient.GetDelegatedIdentity(ctx, modelName)
+	if err != nil {
+		// Log warning but continue - we can still sign with aflock's identity
+		fmt.Fprintf(os.Stderr, "[aflock] Warning: could not get delegated identity for %s: %v\n", modelName, err)
+		return nil
+	}
+
+	s.delegatedIdentity = delegated
+	fmt.Fprintf(os.Stderr, "[aflock] Using delegated identity: %s (delegated by %s)\n",
+		delegated.AgentSPIFFEID, delegated.DelegatedBy)
+	return nil
+}
+
+// GetSigningIdentity returns the identity to use for signing.
+// Returns delegated identity if available, otherwise falls back to aflock's identity.
+func (s *Signer) GetSigningIdentity() (*identity.Identity, string) {
+	if s.delegatedIdentity != nil {
+		// Convert delegated identity to regular identity for signing
+		return &identity.Identity{
+			SPIFFEID:    s.delegatedIdentity.AgentSPIFFEID,
+			Certificate: s.delegatedIdentity.Certificate,
+			PrivateKey:  s.delegatedIdentity.PrivateKey,
+			TrustBundle: s.delegatedIdentity.TrustBundle,
+			ExpiresAt:   s.delegatedIdentity.ExpiresAt,
+		}, s.delegatedIdentity.ModelName
+	}
+	return s.identity, ""
+}
+
+// IsDelegated returns true if we have a delegated identity for an AI agent.
+func (s *Signer) IsDelegated() bool {
+	return s.delegatedIdentity != nil
 }
 
 // Close releases resources.
@@ -80,16 +134,28 @@ type Subject struct {
 
 // ActionPredicate is the predicate for aflock action attestations.
 type ActionPredicate struct {
-	Action      string                 `json:"action"`
-	SessionID   string                 `json:"sessionId"`
-	ToolName    string                 `json:"toolName"`
-	ToolUseID   string                 `json:"toolUseId"`
-	ToolInput   map[string]interface{} `json:"toolInput,omitempty"`
-	Decision    string                 `json:"decision"`
-	Reason      string                 `json:"reason,omitempty"`
-	Timestamp   time.Time              `json:"timestamp"`
-	AgentID     string                 `json:"agentId,omitempty"`
-	Metrics     *MetricsPredicate      `json:"metrics,omitempty"`
+	Action        string                 `json:"action"`
+	SessionID     string                 `json:"sessionId"`
+	ToolName      string                 `json:"toolName"`
+	ToolUseID     string                 `json:"toolUseId"`
+	ToolInput     map[string]interface{} `json:"toolInput,omitempty"`
+	Decision      string                 `json:"decision"`
+	Reason        string                 `json:"reason,omitempty"`
+	Timestamp     time.Time              `json:"timestamp"`
+	AgentID       string                 `json:"agentId,omitempty"`
+	AgentIdentity *TransitiveIdentity    `json:"agentIdentity,omitempty"`
+	Metrics       *MetricsPredicate      `json:"metrics,omitempty"`
+}
+
+// TransitiveIdentity represents the full transitive agent identity.
+type TransitiveIdentity struct {
+	Model        string `json:"model"`
+	ModelVersion string `json:"modelVersion,omitempty"`
+	Binary       string `json:"binary,omitempty"`
+	BinaryHash   string `json:"binaryHash,omitempty"`
+	Environment  string `json:"environment,omitempty"`
+	PolicyDigest string `json:"policyDigest,omitempty"`
+	IdentityHash string `json:"identityHash"`
 }
 
 // MetricsPredicate contains metrics at the time of the action.
@@ -120,11 +186,12 @@ func (s *Signer) CreateActionAttestation(
 	record aflock.ActionRecord,
 	sessionID string,
 	metrics *aflock.SessionMetrics,
+	agentIdentity *identity.AgentIdentity,
 ) (*Envelope, error) {
-	// Parse tool input
+	// Parse tool input (best-effort, ignore errors)
 	var toolInput map[string]interface{}
 	if record.ToolInput != nil {
-		json.Unmarshal(record.ToolInput, &toolInput)
+		_ = json.Unmarshal(record.ToolInput, &toolInput)
 	}
 
 	// Build predicate
@@ -141,6 +208,23 @@ func (s *Signer) CreateActionAttestation(
 
 	if s.identity != nil {
 		predicate.AgentID = s.identity.SPIFFEID.String()
+	}
+
+	// Add transitive agent identity
+	if agentIdentity != nil {
+		predicate.AgentIdentity = &TransitiveIdentity{
+			Model:        agentIdentity.Model,
+			ModelVersion: agentIdentity.ModelVersion,
+			PolicyDigest: agentIdentity.PolicyDigest,
+			IdentityHash: agentIdentity.IdentityHash,
+		}
+		if agentIdentity.Binary != nil {
+			predicate.AgentIdentity.Binary = fmt.Sprintf("%s@%s", agentIdentity.Binary.Name, agentIdentity.Binary.Version)
+			predicate.AgentIdentity.BinaryHash = agentIdentity.Binary.Digest
+		}
+		if agentIdentity.Environment != nil {
+			predicate.AgentIdentity.Environment = agentIdentity.Environment.Type
+		}
 	}
 
 	if metrics != nil {
@@ -173,6 +257,12 @@ func (s *Signer) CreateActionAttestation(
 
 // Sign signs a statement and returns a DSSE envelope.
 func (s *Signer) Sign(ctx context.Context, statement Statement) (*Envelope, error) {
+	// Get the appropriate signing identity (delegated or aflock's)
+	signingIdentity, _ := s.GetSigningIdentity()
+	if signingIdentity == nil {
+		return nil, fmt.Errorf("no signing identity available")
+	}
+
 	// Serialize statement
 	payload, err := json.Marshal(statement)
 	if err != nil {
@@ -185,19 +275,10 @@ func (s *Signer) Sign(ctx context.Context, statement Statement) (*Envelope, erro
 	// Create PAE (Pre-Authentication Encoding)
 	pae := createPAE(PayloadType, payload)
 
-	// Sign PAE
-	var sig []byte
-	var keyID string
-
-	if s.identity != nil {
-		// Sign with SPIRE-provided key
-		sig, err = signWithPrivateKey(s.identity.PrivateKey, pae)
-		if err != nil {
-			return nil, fmt.Errorf("sign with SPIRE key: %w", err)
-		}
-		keyID = s.identity.SPIFFEID.String()
-	} else {
-		return nil, fmt.Errorf("no signing identity available")
+	// Sign PAE with the signing identity
+	sig, err := signWithPrivateKey(signingIdentity.PrivateKey, pae)
+	if err != nil {
+		return nil, fmt.Errorf("sign: %w", err)
 	}
 
 	envelope := &Envelope{
@@ -205,7 +286,7 @@ func (s *Signer) Sign(ctx context.Context, statement Statement) (*Envelope, erro
 		Payload:     payloadB64,
 		Signatures: []Signature{
 			{
-				KeyID: keyID,
+				KeyID: signingIdentity.SPIFFEID.String(),
 				Sig:   base64.StdEncoding.EncodeToString(sig),
 			},
 		},
@@ -310,4 +391,86 @@ func VerifyEnvelope(envelope *Envelope, trustedCerts []*x509.Certificate) error 
 	}
 
 	return nil
+}
+
+// spireSigner wraps a SPIRE identity to implement cryptoutil.Signer.
+type spireSigner struct {
+	identity *identity.Identity
+}
+
+// KeyID returns the SPIFFE ID as the key identifier.
+func (s *spireSigner) KeyID() (string, error) {
+	if s.identity == nil {
+		return "", fmt.Errorf("no identity available")
+	}
+	return s.identity.SPIFFEID.String(), nil
+}
+
+// Sign signs the data with the SPIRE private key.
+func (s *spireSigner) Sign(r io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read data: %w", err)
+	}
+
+	hash := sha256.Sum256(data)
+
+	switch key := s.identity.PrivateKey.(type) {
+	case *ecdsa.PrivateKey:
+		return ecdsa.SignASN1(rand.Reader, key, hash[:])
+	case crypto.Signer:
+		return key.Sign(rand.Reader, hash[:], crypto.SHA256)
+	default:
+		return nil, fmt.Errorf("unsupported key type: %T", s.identity.PrivateKey)
+	}
+}
+
+// Verifier returns a verifier for the signer's public key.
+func (s *spireSigner) Verifier() (cryptoutil.Verifier, error) {
+	if s.identity == nil || s.identity.Certificate == nil {
+		return nil, fmt.Errorf("no certificate available")
+	}
+	return cryptoutil.NewVerifier(s.identity.Certificate.PublicKey)
+}
+
+// SignCollection signs a go-witness attestation Collection and returns a DSSE envelope.
+func (s *Signer) SignCollection(ctx context.Context, collection attestation.Collection) (*dsse.Envelope, error) {
+	// Get the appropriate signing identity (delegated or aflock's)
+	signingIdentity, modelName := s.GetSigningIdentity()
+	if signingIdentity == nil {
+		return nil, fmt.Errorf("no signing identity available")
+	}
+
+	// Log which identity we're using
+	if s.IsDelegated() {
+		fmt.Fprintf(os.Stderr, "[aflock] Signing as agent: %s (model: %s)\n",
+			signingIdentity.SPIFFEID, modelName)
+	}
+
+	// Serialize collection to JSON
+	collectionJSON, err := json.Marshal(collection)
+	if err != nil {
+		return nil, fmt.Errorf("marshal collection: %w", err)
+	}
+
+	// Create signer wrapper with the signing identity
+	signer := &spireSigner{identity: signingIdentity}
+
+	// Sign with go-witness DSSE
+	envelope, err := dsse.Sign(attestation.CollectionType, bytes.NewReader(collectionJSON),
+		dsse.SignWithSigners(signer),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("sign collection: %w", err)
+	}
+
+	return &envelope, nil
+}
+
+// GetSigner returns a cryptoutil.Signer using the SPIRE identity.
+func (s *Signer) GetSigner() (cryptoutil.Signer, error) {
+	if s.identity == nil {
+		return nil, fmt.Errorf("no signing identity available")
+	}
+	return &spireSigner{identity: s.identity}, nil
 }

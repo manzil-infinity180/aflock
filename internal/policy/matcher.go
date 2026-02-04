@@ -23,6 +23,7 @@ func NewMatcher() *Matcher {
 }
 
 // MatchGlob checks if value matches the glob pattern.
+// Handles **/*.ext patterns to also match root-level files like foo.ext
 func (m *Matcher) MatchGlob(pattern, value string) bool {
 	g, ok := m.globs[pattern]
 	if !ok {
@@ -33,7 +34,26 @@ func (m *Matcher) MatchGlob(pattern, value string) bool {
 		}
 		m.globs[pattern] = g
 	}
-	return g.Match(value)
+	if g.Match(value) {
+		return true
+	}
+
+	// Handle **/*.ext patterns - gobwas/glob's ** requires at least one path segment,
+	// so **/*.go doesn't match root-level main.go. We check with the equivalent *.ext pattern.
+	if strings.HasPrefix(pattern, "**/") {
+		// Convert **/*.go to *.go and try again
+		rootPattern := pattern[3:] // Remove **/ prefix
+		if rootG, ok := m.globs[rootPattern]; ok {
+			return rootG.Match(value)
+		}
+		rootG, err := glob.Compile(rootPattern)
+		if err == nil {
+			m.globs[rootPattern] = rootG
+			return rootG.Match(value)
+		}
+	}
+
+	return false
 }
 
 // MatchRegex checks if value matches the regex pattern.

@@ -8,7 +8,7 @@
   },
   "homepage": "https://github.com/aflock-ai/aflock",
   "repository": "https://github.com/aflock-ai/aflock",
-  "license": "Proprietary",
+  "license": "Apache-2.0",
   "keywords": ["security", "policy", "attestation", "spiffe", "spire"],
   "hooks": "./hooks/hooks.json"
 }

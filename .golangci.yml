@@ -1,0 +1,70 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - gocritic
+    - misspell
+  settings:
+    errcheck:
+      check-type-assertions: false
+      exclude-functions:
+        # File operations safe to ignore in defer
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (net.Conn).Close
+        - (net.Listener).Close
+        # Printf-like functions
+        - fmt.Printf
+        - fmt.Println
+        - fmt.Print
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Sscanf
+        # JSON encoding
+        - (*encoding/json.Encoder).Encode
+        # OS operations - best-effort cleanup
+        - os.Remove
+        - os.RemoveAll
+        - os.Setenv
+        - os.Unsetenv
+        - os.Chdir
+        - os.Chmod
+        - os.MkdirAll
+        - os.WriteFile
+        - os.Mkdir
+        # Exec commands in cleanup/tests
+        - (*os/exec.Cmd).Run
+        - (*os/exec.Cmd).Wait
+        - (*os.Process).Kill
+        # aflock-specific
+        - (*github.com/aflock-ai/aflock/internal/state.Manager).Save
+        - (*github.com/aflock-ai/aflock/internal/identity.SpireClient).Close
+        - (*github.com/aflock-ai/aflock/internal/identity.AgentIdentity).ToSPIFFEID
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - deprecatedComment
+        - elseif
+    staticcheck:
+      checks:
+        - all
+        - -ST1000  # Package comments
+        - -ST1020  # Method comment form
+        - -ST1021  # Type comment form
+        - -ST1022  # Const comment form
+        - -QF1003  # Don't require tagged switch
+        - -QF1012  # Allow WriteString with fmt.Sprintf
+        - -SA9003  # Empty branches are intentional
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m
+  tests: true

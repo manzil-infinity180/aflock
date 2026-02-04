@@ -79,13 +79,13 @@ const (
 
 // HookOutput represents the JSON output to Claude Code.
 type HookOutput struct {
-	Continue           bool                    `json:"continue,omitempty"`
-	StopReason         string                  `json:"stopReason,omitempty"`
-	SuppressOutput     bool                    `json:"suppressOutput,omitempty"`
-	SystemMessage      string                  `json:"systemMessage,omitempty"`
-	Decision           string                  `json:"decision,omitempty"`
-	Reason             string                  `json:"reason,omitempty"`
-	HookSpecificOutput *HookSpecificOutput     `json:"hookSpecificOutput,omitempty"`
+	Continue           bool                `json:"continue,omitempty"`
+	StopReason         string              `json:"stopReason,omitempty"`
+	SuppressOutput     bool                `json:"suppressOutput,omitempty"`
+	SystemMessage      string              `json:"systemMessage,omitempty"`
+	Decision           string              `json:"decision,omitempty"`
+	Reason             string              `json:"reason,omitempty"`
+	HookSpecificOutput *HookSpecificOutput `json:"hookSpecificOutput,omitempty"`
 }
 
 // HookSpecificOutput contains hook-specific output fields.
@@ -107,25 +107,81 @@ type DecisionOutput struct {
 }
 
 // Policy represents an .aflock policy file.
+// It combines go-witness verification policy with real-time tool execution rules.
 type Policy struct {
-	Version              string                  `json:"version"`
-	Name                 string                  `json:"name"`
-	Expires              *time.Time              `json:"expires,omitempty"`
-	Identity             *IdentityPolicy         `json:"identity,omitempty"`
-	Grants               *GrantsPolicy           `json:"grants,omitempty"`
-	Limits               *LimitsPolicy           `json:"limits,omitempty"`
-	Tools                *ToolsPolicy            `json:"tools,omitempty"`
-	Files                *FilesPolicy            `json:"files,omitempty"`
-	Domains              *DomainsPolicy          `json:"domains,omitempty"`
-	RequiredAttestations []string                `json:"requiredAttestations,omitempty"`
-	AttestationDir       string                  `json:"attestationDir,omitempty"`
-	AttestationsFrom     []string                `json:"attestationsFrom,omitempty"`
-	MaterialsFrom        *MaterialsPolicy        `json:"materialsFrom,omitempty"`
-	Evaluators           *EvaluatorsPolicy       `json:"evaluators,omitempty"`
-	Functionaries        []Functionary           `json:"functionaries,omitempty"`
-	Sublayouts           []Sublayout             `json:"sublayouts,omitempty"`
-	Hooks                *HooksConfig            `json:"hooks,omitempty"`
-	DataFlow             *DataFlowPolicy         `json:"dataFlow,omitempty"`
+	// Metadata
+	Version string     `json:"version"`
+	Name    string     `json:"name"`
+	Expires *time.Time `json:"expires,omitempty"`
+
+	// go-witness verification fields (evaluated at verification time)
+	Roots map[string]Root `json:"roots,omitempty"` // CA roots for signature verification
+	Steps map[string]Step `json:"steps,omitempty"` // Required steps with functionaries and attestations
+
+	// Real-time tool execution rules (evaluated during MCP calls)
+	Identity   *IdentityPolicy `json:"identity,omitempty"`
+	Grants     *GrantsPolicy   `json:"grants,omitempty"`
+	Limits     *LimitsPolicy   `json:"limits,omitempty"`
+	Tools      *ToolsPolicy    `json:"tools,omitempty"`
+	Files      *FilesPolicy    `json:"files,omitempty"`
+	Domains    *DomainsPolicy  `json:"domains,omitempty"`
+	DataFlow   *DataFlowPolicy `json:"dataFlow,omitempty"`
+	Hooks      *HooksConfig    `json:"hooks,omitempty"`
+	Sublayouts []Sublayout     `json:"sublayouts,omitempty"`
+
+	// Legacy fields (kept for backwards compatibility)
+	RequiredAttestations []string          `json:"requiredAttestations,omitempty"`
+	AttestationDir       string            `json:"attestationDir,omitempty"`
+	AttestationsFrom     []string          `json:"attestationsFrom,omitempty"`
+	MaterialsFrom        *MaterialsPolicy  `json:"materialsFrom,omitempty"`
+	Evaluators           *EvaluatorsPolicy `json:"evaluators,omitempty"`
+	Functionaries        []Functionary     `json:"functionaries,omitempty"` // Legacy, use Steps.Functionaries instead
+}
+
+// Root represents a trust anchor (CA certificate) for signature verification.
+type Root struct {
+	Certificate string `json:"certificate"` // Base64-encoded PEM certificate
+}
+
+// Step represents a verification step in the supply chain.
+type Step struct {
+	Name          string            `json:"name"`
+	Functionaries []StepFunctionary `json:"functionaries"`
+	Attestations  []StepAttestation `json:"attestations"`
+	ArtifactsFrom []string          `json:"artifactsFrom,omitempty"` // Steps whose products become this step's materials
+}
+
+// StepFunctionary defines who can sign attestations for a step.
+type StepFunctionary struct {
+	Type           string          `json:"type"` // "root", "publickey"
+	CertConstraint *CertConstraint `json:"certConstraint,omitempty"`
+	PublicKeyID    string          `json:"publickeyid,omitempty"`
+}
+
+// CertConstraint defines constraints on certificate attributes.
+type CertConstraint struct {
+	CommonName string   `json:"commonName,omitempty"`
+	URIs       []string `json:"uris,omitempty"` // SPIFFE ID patterns
+}
+
+// StepAttestation defines required attestation types for a step.
+type StepAttestation struct {
+	Type         string       `json:"type"` // Attestation type URI
+	RegoPolicies []RegoPolicy `json:"regopolicies,omitempty"`
+}
+
+// RegoPolicy defines a Rego policy for attestation validation.
+type RegoPolicy struct {
+	Name   string `json:"name"`
+	Module string `json:"module"` // Base64-encoded Rego module
+}
+
+// IsExpired checks if the policy has expired.
+func (p *Policy) IsExpired() bool {
+	if p.Expires == nil {
+		return false
+	}
+	return time.Now().After(*p.Expires)
 }
 
 // IdentityPolicy defines agent identity constraints.
@@ -291,13 +347,13 @@ type Functionary struct {
 
 // Sublayout defines a sub-agent policy delegation.
 type Sublayout struct {
-	Name              string         `json:"name"`
-	Policy            string         `json:"policy"`
+	Name              string            `json:"name"`
+	Policy            string            `json:"policy"`
 	PolicyDigest      map[string]string `json:"policyDigest,omitempty"`
-	Functionaries     []Functionary  `json:"functionaries,omitempty"`
-	Limits            *LimitsPolicy  `json:"limits,omitempty"`
-	Inherit           []string       `json:"inherit,omitempty"`
-	AttestationPrefix string         `json:"attestationPrefix,omitempty"`
+	Functionaries     []Functionary     `json:"functionaries,omitempty"`
+	Limits            *LimitsPolicy     `json:"limits,omitempty"`
+	Inherit           []string          `json:"inherit,omitempty"`
+	AttestationPrefix string            `json:"attestationPrefix,omitempty"`
 }
 
 // HooksConfig defines hook-specific configuration.
@@ -353,34 +409,34 @@ type MaterialClassification struct {
 
 // SessionState represents the runtime state for a session.
 type SessionState struct {
-	SessionID   string           `json:"session_id"`
-	StartedAt   time.Time        `json:"started_at"`
-	Policy      *Policy          `json:"policy,omitempty"`
-	PolicyPath  string           `json:"policy_path,omitempty"`
-	Metrics     *SessionMetrics  `json:"metrics"`
-	Actions     []ActionRecord   `json:"actions,omitempty"`
+	SessionID  string          `json:"session_id"`
+	StartedAt  time.Time       `json:"started_at"`
+	Policy     *Policy         `json:"policy,omitempty"`
+	PolicyPath string          `json:"policy_path,omitempty"`
+	Metrics    *SessionMetrics `json:"metrics"`
+	Actions    []ActionRecord  `json:"actions,omitempty"`
 	// Materials tracks accessed data sources with their classifications for provenance
-	Materials   []MaterialClassification `json:"materials,omitempty"`
+	Materials []MaterialClassification `json:"materials,omitempty"`
 }
 
 // SessionMetrics tracks cumulative metrics.
 type SessionMetrics struct {
-	TokensIn   int64              `json:"tokensIn"`
-	TokensOut  int64              `json:"tokensOut"`
-	CostUSD    float64            `json:"costUSD"`
-	Turns      int                `json:"turns"`
-	ToolCalls  int                `json:"toolCalls"`
-	Tools      map[string]int     `json:"tools"`
-	FilesRead  []string           `json:"filesRead,omitempty"`
-	FilesWritten []string         `json:"filesWritten,omitempty"`
+	TokensIn     int64          `json:"tokensIn"`
+	TokensOut    int64          `json:"tokensOut"`
+	CostUSD      float64        `json:"costUSD"`
+	Turns        int            `json:"turns"`
+	ToolCalls    int            `json:"toolCalls"`
+	Tools        map[string]int `json:"tools"`
+	FilesRead    []string       `json:"filesRead,omitempty"`
+	FilesWritten []string       `json:"filesWritten,omitempty"`
 }
 
 // ActionRecord represents a recorded action.
 type ActionRecord struct {
-	Timestamp  time.Time       `json:"timestamp"`
-	ToolName   string          `json:"tool_name"`
-	ToolUseID  string          `json:"tool_use_id"`
-	ToolInput  json.RawMessage `json:"tool_input,omitempty"`
-	Decision   string          `json:"decision"` // "allow", "deny", "ask"
-	Reason     string          `json:"reason,omitempty"`
+	Timestamp time.Time       `json:"timestamp"`
+	ToolName  string          `json:"tool_name"`
+	ToolUseID string          `json:"tool_use_id"`
+	ToolInput json.RawMessage `json:"tool_input,omitempty"`
+	Decision  string          `json:"decision"` // "allow", "deny", "ask"
+	Reason    string          `json:"reason,omitempty"`
 }
