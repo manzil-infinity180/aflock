@@ -2,16 +2,19 @@
 package identity
 
 import (
+	"crypto"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/in-toto/go-witness/cryptoutil"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
 
@@ -38,6 +41,15 @@ type AgentIdentity struct {
 
 	// SessionID binds to the current session
 	SessionID string `json:"sessionId,omitempty"`
+
+	// SessionPath is the path to the Claude session file
+	SessionPath string `json:"sessionPath,omitempty"`
+
+	// ClaudePID is the PID of the Claude process
+	ClaudePID int `json:"claudePid,omitempty"`
+
+	// ProcessChain is the full chain of processes from aflock to init
+	ProcessChain []ProcessInfo `json:"processChain,omitempty"`
 
 	// ParentIdentity is the identity of the parent agent (for sublayouts)
 	ParentIdentity string `json:"parentIdentity,omitempty"`
@@ -161,11 +173,23 @@ func (a *AgentIdentity) ToSPIFFEID(trustDomain string) (spiffeid.ID, error) {
 }
 
 // DiscoverAgentIdentity discovers the current agent's identity from the environment.
+// Uses PID-based discovery to trace the Claude process and session.
 func DiscoverAgentIdentity() (*AgentIdentity, error) {
 	identity := &AgentIdentity{}
 
-	// Discover model from environment
-	identity.Model = discoverModel()
+	// Use comprehensive PID-based discovery
+	model, meta, err := DiscoverFromMCPSocket()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[aflock] PID-based discovery failed: %v\n", err)
+		identity.Model = "unknown"
+	} else {
+		identity.Model = model
+		identity.SessionID = meta.SessionID
+		identity.SessionPath = meta.SessionPath
+		identity.ClaudePID = meta.ClaudePID
+		identity.ProcessChain = meta.ProcessChain
+	}
+
 	identity.ModelVersion = parseModelVersion(identity.Model)
 
 	// Discover binary
@@ -180,38 +204,14 @@ func DiscoverAgentIdentity() (*AgentIdentity, error) {
 	return identity, nil
 }
 
-// discoverModel discovers the AI model from environment variables or config.
-func discoverModel() string {
-	// Check common environment variables
-	if model := os.Getenv("CLAUDE_MODEL"); model != "" {
-		return model
-	}
-	if model := os.Getenv("ANTHROPIC_MODEL"); model != "" {
-		return model
-	}
-
-	// Try to get from claude CLI
-	if out, err := exec.Command("claude", "--version").Output(); err == nil {
-		// Parse version output for model info
-		if strings.Contains(string(out), "opus") {
-			return "claude-opus-4"
-		}
-		if strings.Contains(string(out), "sonnet") {
-			return "claude-sonnet-4"
-		}
-	}
-
-	return "unknown"
-}
-
 // parseModelVersion extracts semantic version from model identifier.
 func parseModelVersion(model string) string {
 	// Pattern: model-name-X-Y-YYYYMMDD or model-name-X.Y.Z
 	patterns := []string{
-		`(\d+)-(\d+)-(\d{8})$`,          // claude-opus-4-5-20251101
-		`(\d+)\.(\d+)\.(\d+)$`,          // claude-opus-4.5.0
-		`(\d+)-(\d+)$`,                  // claude-opus-4-5
-		`(\d+)$`,                        // claude-opus-4
+		`(\d+)-(\d+)-(\d{8})$`, // claude-opus-4-5-20251101
+		`(\d+)\.(\d+)\.(\d+)$`, // claude-opus-4.5.0
+		`(\d+)-(\d+)$`,         // claude-opus-4-5
+		`(\d+)$`,               // claude-opus-4
 	}
 
 	for _, pattern := range patterns {
@@ -231,7 +231,7 @@ func parseModelVersion(model string) string {
 	return "0.0.0"
 }
 
-// discoverBinary discovers the agent binary information.
+// discoverBinary discovers the agent binary information including SHA256 digest.
 func discoverBinary() *BinaryIdentity {
 	binary := &BinaryIdentity{}
 
@@ -245,16 +245,21 @@ func discoverBinary() *BinaryIdentity {
 		}
 	}
 
-	// Get version
+	// Get version and compute digest
 	if binary.Path != "" {
 		binary.Name = "claude-code"
+
+		// Get version
 		if out, err := exec.Command(binary.Path, "--version").Output(); err == nil {
-			// Parse version from output
 			versionPattern := regexp.MustCompile(`(\d+\.\d+\.\d+)`)
 			if matches := versionPattern.FindStringSubmatch(string(out)); len(matches) > 1 {
 				binary.Version = matches[1]
 			}
 		}
+
+		// Resolve to the actual executable (follows symlinks and shell wrappers)
+		actualPath := resolveActualBinary(binary.Path)
+		binary.Digest = computeBinaryDigest(actualPath)
 	}
 
 	if binary.Version == "" {
@@ -262,6 +267,64 @@ func discoverBinary() *BinaryIdentity {
 	}
 
 	return binary
+}
+
+// resolveActualBinary follows symlinks and shell script wrappers to find the actual binary.
+func resolveActualBinary(path string) string {
+	// First resolve symlinks
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		resolved = path
+	}
+
+	// Check if it's a shell script wrapper
+	content, err := os.ReadFile(resolved)
+	if err != nil {
+		return resolved
+	}
+
+	// Look for exec patterns in shell scripts
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Match patterns like: exec "/path/to/binary" "$@"
+		if strings.HasPrefix(line, "exec ") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				target := strings.Trim(parts[1], "\"'")
+				if strings.HasPrefix(target, "/") {
+					// Recursively resolve the target
+					return resolveActualBinary(target)
+				}
+			}
+		}
+	}
+
+	return resolved
+}
+
+// computeBinaryDigest computes the SHA256 digest of a binary file using go-witness cryptoutil.
+func computeBinaryDigest(path string) string {
+	// Resolve symlinks to get the actual binary
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		resolvedPath = path
+	}
+
+	// Use go-witness cryptoutil for consistent digest calculation
+	sha256Digest := cryptoutil.DigestValue{Hash: crypto.SHA256}
+	digestSet, err := cryptoutil.CalculateDigestSetFromFile(resolvedPath, []cryptoutil.DigestValue{sha256Digest})
+	if err != nil {
+		return ""
+	}
+
+	// Get SHA256 from the digest set
+	digestMap, err := digestSet.ToNameMap()
+	if err != nil {
+		return ""
+	}
+
+	return digestMap["sha256"]
 }
 
 // discoverEnvironment discovers the execution environment.

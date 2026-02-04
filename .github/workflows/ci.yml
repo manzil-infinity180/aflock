@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build
+        run: go build -v ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.0.2
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Run unit tests
+        run: go test -coverprofile=coverage.out -covermode=atomic ./internal/... ./pkg/...
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 7
+
+  coverage-check:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: Check coverage
+        run: |
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Coverage |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|----------|" >> $GITHUB_STEP_SUMMARY
+
+          go tool cover -func=coverage.out | while read line; do
+            if [[ "$line" == *"total:"* ]]; then
+              total=$(echo "$line" | awk '{print $NF}')
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Total Coverage: $total**" >> $GITHUB_STEP_SUMMARY
+            elif [[ "$line" != "" ]]; then
+              pkg=$(echo "$line" | awk '{print $1}')
+              cov=$(echo "$line" | awk '{print $NF}')
+              if [[ "$pkg" != "" && "$cov" != "" ]]; then
+                echo "| $pkg | $cov |" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          done
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build binary
+        run: go build -o bin/aflock ./cmd/aflock
+
+      - name: Initialize test project
+        run: |
+          mkdir -p /tmp/aflock-test/src
+          cd /tmp/aflock-test
+          git init
+          git config user.email "ci@aflock.ai"
+          git config user.name "CI"
+          $GITHUB_WORKSPACE/bin/aflock init
+          echo "test" > src/app.go
+          git add .
+          git commit -m "initial"
+
+      - name: Test hooks
+        run: |
+          cd /tmp/aflock-test
+
+          echo "Testing SessionStart..."
+          echo '{"session_id":"ci-test","cwd":"/tmp/aflock-test"}' | $GITHUB_WORKSPACE/bin/aflock hook SessionStart
+
+          echo "Testing PreToolUse (allowed)..."
+          echo '{"session_id":"ci-test","cwd":"/tmp/aflock-test","tool_name":"Read","tool_use_id":"t1","tool_input":{"file_path":"src/app.go"}}' | $GITHUB_WORKSPACE/bin/aflock hook PreToolUse
+
+          echo "Testing PreToolUse (denied - Task)..."
+          if echo '{"session_id":"ci-test","cwd":"/tmp/aflock-test","tool_name":"Task","tool_use_id":"t2","tool_input":{}}' | $GITHUB_WORKSPACE/bin/aflock hook PreToolUse 2>&1; then
+            echo "ERROR: Task should have been denied"
+            exit 1
+          fi
+          echo "Task correctly denied"
+
+          echo "Testing verify..."
+          $GITHUB_WORKSPACE/bin/aflock verify --policy .aflock
+
+      - name: Test status command
+        run: $GITHUB_WORKSPACE/bin/aflock status
+
+  all-tests:
+    runs-on: ubuntu-latest
+    needs: [build, lint, unit-tests, integration-tests]
+    steps:
+      - name: All checks passed
+        run: echo "All CI checks passed!"

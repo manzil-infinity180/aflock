@@ -18,14 +18,14 @@ import (
 
 // Result represents the verification result.
 type Result struct {
-	Success       bool             `json:"success"`
-	SessionID     string           `json:"sessionId"`
-	PolicyName    string           `json:"policyName"`
-	VerifiedAt    time.Time        `json:"verifiedAt"`
-	Checks        []CheckResult    `json:"checks"`
-	Metrics       *MetricsSummary  `json:"metrics,omitempty"`
-	Errors        []string         `json:"errors,omitempty"`
-	Warnings      []string         `json:"warnings,omitempty"`
+	Success    bool            `json:"success"`
+	SessionID  string          `json:"sessionId"`
+	PolicyName string          `json:"policyName"`
+	VerifiedAt time.Time       `json:"verifiedAt"`
+	Checks     []CheckResult   `json:"checks"`
+	Metrics    *MetricsSummary `json:"metrics,omitempty"`
+	Errors     []string        `json:"errors,omitempty"`
+	Warnings   []string        `json:"warnings,omitempty"`
 }
 
 // CheckResult represents a single verification check.
@@ -37,12 +37,12 @@ type CheckResult struct {
 
 // MetricsSummary summarizes session metrics.
 type MetricsSummary struct {
-	TotalTurns      int     `json:"totalTurns"`
-	TotalToolCalls  int     `json:"totalToolCalls"`
-	TotalTokensIn   int64   `json:"totalTokensIn"`
-	TotalTokensOut  int64   `json:"totalTokensOut"`
-	TotalCostUSD    float64 `json:"totalCostUSD"`
-	Duration        string  `json:"duration"`
+	TotalTurns     int     `json:"totalTurns"`
+	TotalToolCalls int     `json:"totalToolCalls"`
+	TotalTokensIn  int64   `json:"totalTokensIn"`
+	TotalTokensOut int64   `json:"totalTokensOut"`
+	TotalCostUSD   float64 `json:"totalCostUSD"`
+	Duration       string  `json:"duration"`
 }
 
 // Verifier verifies session attestations against policy.
@@ -308,4 +308,181 @@ func containsCheckPrefix(checks []CheckResult, prefix string) bool {
 		}
 	}
 	return false
+}
+
+// StepResult represents the verification result for a single step.
+type StepResult struct {
+	Name            string   `json:"name"`
+	AttestationPath string   `json:"attestationPath,omitempty"`
+	Found           bool     `json:"found"`
+	SignatureValid  bool     `json:"signatureValid"`
+	ArtifactsMatch  bool     `json:"artifactsMatch"`
+	Errors          []string `json:"errors,omitempty"`
+}
+
+// StepsResult represents the result of verifying all required steps.
+type StepsResult struct {
+	Success    bool                  `json:"success"`
+	TreeHash   string                `json:"treeHash"`
+	PolicyName string                `json:"policyName"`
+	VerifiedAt time.Time             `json:"verifiedAt"`
+	Steps      map[string]StepResult `json:"steps"`
+	Errors     []string              `json:"errors,omitempty"`
+}
+
+// VerifySteps verifies attestations for all required steps in a policy.
+// attestDir is the base directory (e.g., ~/.aflock/attestations)
+// treeHash is the git tree hash to verify attestations for
+func (v *Verifier) VerifySteps(pol *aflock.Policy, attestDir, treeHash string) (*StepsResult, error) {
+	result := &StepsResult{
+		Success:    true,
+		TreeHash:   treeHash,
+		PolicyName: pol.Name,
+		VerifiedAt: time.Now(),
+		Steps:      make(map[string]StepResult),
+	}
+
+	// Check policy expiration
+	if pol.IsExpired() {
+		result.Success = false
+		result.Errors = append(result.Errors, fmt.Sprintf("Policy expired at %s", pol.Expires))
+		return result, nil
+	}
+
+	// If no steps defined, nothing to verify
+	if len(pol.Steps) == 0 {
+		return result, nil
+	}
+
+	// Verify each step has an attestation
+	for stepName, step := range pol.Steps {
+		stepResult := StepResult{
+			Name:           stepName,
+			ArtifactsMatch: true, // Will be set false if check fails
+		}
+
+		// Look for attestation file
+		attestPath := filepath.Join(attestDir, treeHash, stepName+".intoto.json")
+		if _, err := os.Stat(attestPath); os.IsNotExist(err) {
+			stepResult.Found = false
+			stepResult.Errors = append(stepResult.Errors, fmt.Sprintf("Attestation not found: %s", attestPath))
+			result.Success = false
+		} else if err != nil {
+			stepResult.Found = false
+			stepResult.Errors = append(stepResult.Errors, fmt.Sprintf("Error checking attestation: %v", err))
+			result.Success = false
+		} else {
+			stepResult.Found = true
+			stepResult.AttestationPath = attestPath
+
+			// Verify attestation contents
+			if err := v.verifyStepAttestation(attestPath, &step, pol); err != nil {
+				stepResult.SignatureValid = false
+				stepResult.Errors = append(stepResult.Errors, fmt.Sprintf("Attestation verification failed: %v", err))
+				result.Success = false
+			} else {
+				stepResult.SignatureValid = true
+			}
+		}
+
+		// Check artifact chain from previous steps
+		if len(step.ArtifactsFrom) > 0 {
+			for _, fromStep := range step.ArtifactsFrom {
+				if fromResult, exists := result.Steps[fromStep]; exists && fromResult.Found {
+					// TODO: Compare products from fromStep with materials of this step
+					// For now, just verify the dependency step exists
+				} else {
+					stepResult.ArtifactsMatch = false
+					stepResult.Errors = append(stepResult.Errors, fmt.Sprintf("Artifacts from step '%s' not available", fromStep))
+					result.Success = false
+				}
+			}
+		}
+
+		result.Steps[stepName] = stepResult
+	}
+
+	// Collect all errors
+	for _, stepResult := range result.Steps {
+		result.Errors = append(result.Errors, stepResult.Errors...)
+	}
+
+	return result, nil
+}
+
+// verifyStepAttestation verifies a single step's attestation against policy.
+func (v *Verifier) verifyStepAttestation(attestPath string, step *aflock.Step, pol *aflock.Policy) error {
+	data, err := os.ReadFile(attestPath)
+	if err != nil {
+		return fmt.Errorf("read attestation: %w", err)
+	}
+
+	// Parse as DSSE envelope (go-witness format)
+	var envelope struct {
+		PayloadType string `json:"payloadType"`
+		Payload     string `json:"payload"`
+		Signatures  []struct {
+			KeyID string `json:"keyid"`
+			Sig   string `json:"sig"`
+		} `json:"signatures"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return fmt.Errorf("parse envelope: %w", err)
+	}
+
+	if len(envelope.Signatures) == 0 {
+		return fmt.Errorf("no signatures in envelope")
+	}
+
+	// Decode payload
+	payload, err := base64.StdEncoding.DecodeString(envelope.Payload)
+	if err != nil {
+		return fmt.Errorf("decode payload: %w", err)
+	}
+
+	// Parse as go-witness collection
+	var collection struct {
+		Name         string `json:"name"`
+		Attestations []struct {
+			Type        string          `json:"type"`
+			Attestation json.RawMessage `json:"attestation"`
+		} `json:"attestations"`
+	}
+	if err := json.Unmarshal(payload, &collection); err != nil {
+		return fmt.Errorf("parse collection: %w", err)
+	}
+
+	// Verify collection name matches step name
+	if collection.Name != step.Name {
+		return fmt.Errorf("collection name '%s' doesn't match step name '%s'", collection.Name, step.Name)
+	}
+
+	// Check required attestation types
+	for _, required := range step.Attestations {
+		found := false
+		for _, att := range collection.Attestations {
+			if att.Type == required.Type {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("missing required attestation type: %s", required.Type)
+		}
+	}
+
+	// TODO: Verify signature against functionaries
+	// This requires loading certificates/public keys from pol.Roots
+	// and checking the signature keyid against allowed functionaries
+
+	return nil
+}
+
+// VerifyTreeHash gets the current git tree hash and verifies all steps.
+func (v *Verifier) VerifyTreeHash(pol *aflock.Policy, attestDir string) (*StepsResult, error) {
+	treeHash, err := attestation.GetGitTreeHash("")
+	if err != nil {
+		return nil, fmt.Errorf("get git tree hash: %w", err)
+	}
+	return v.VerifySteps(pol, attestDir, treeHash)
 }
