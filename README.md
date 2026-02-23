@@ -172,7 +172,7 @@ Inspired by [in-toto sublayouts](https://github.com/in-toto/specification):
 
 ## Documentation
 
-- **[Specification](docs/spec.md)** - Full schema, verification algorithm, SPIRE reference
+- **[Specification](docs/reference/specification.md)** - Full schema, verification algorithm, SPIRE reference
 - **[Examples](examples/)** - Compliance evaluation, todo app verification
 
 ## Status

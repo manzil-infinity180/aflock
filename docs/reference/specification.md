@@ -1,3 +1,8 @@
+---
+sidebar_position: 3
+title: Specification
+---
+
 # AgentFlow Lock (`.aflock`) Specification
 
 **Version:** 1.0
