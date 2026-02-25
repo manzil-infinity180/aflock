@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 620" width="700" height="620" font-family="system-ui, sans-serif">
+  <defs>
+    <filter id="shadow1" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrowRight" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="700" height="620" rx="12" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="350" y="38" text-anchor="middle" font-size="18" font-weight="700" fill="#1e1e1e">SPIRE Architecture Mapping to aflock</text>
+  <line x1="200" y1="50" x2="500" y2="50" stroke="#c7d2fe" stroke-width="1.5"/>
+
+  <!-- Column Headers -->
+  <text x="145" y="82" text-anchor="middle" font-size="13" font-weight="600" fill="#6366f1" letter-spacing="1">SPIRE CONCEPTS</text>
+  <text x="555" y="82" text-anchor="middle" font-size="13" font-weight="600" fill="#6366f1" letter-spacing="1">AFLOCK EQUIVALENTS</text>
+
+  <!-- Row 1: Workload -> AI Agent -->
+  <rect x="20" y="100" width="250" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.2" filter="url(#shadow1)"/>
+  <text x="145" y="124" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">Workload</text>
+  <text x="145" y="142" text-anchor="middle" font-size="11" fill="#64748b">(any process)</text>
+
+  <line x1="275" y1="128" x2="425" y2="128" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowRight)"/>
+
+  <rect x="430" y="100" width="250" height="56" rx="8" fill="#6366f1" filter="url(#shadow1)"/>
+  <text x="555" y="124" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">AI Agent</text>
+  <text x="555" y="142" text-anchor="middle" font-size="11" fill="#c7d2fe">(Claude Code)</text>
+
+  <!-- Row 2: SPIRE Agent -> aflock MCP Server -->
+  <rect x="20" y="172" width="250" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.2" filter="url(#shadow1)"/>
+  <text x="145" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">SPIRE Agent</text>
+  <text x="145" y="214" text-anchor="middle" font-size="11" fill="#64748b"></text>
+
+  <line x1="275" y1="200" x2="425" y2="200" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowRight)"/>
+
+  <rect x="430" y="172" width="250" height="56" rx="8" fill="#6366f1" filter="url(#shadow1)"/>
+  <text x="555" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">aflock MCP Server</text>
+  <text x="555" y="214" text-anchor="middle" font-size="11" fill="#c7d2fe"></text>
+
+  <!-- Row 3: Workload API -> MCP Protocol -->
+  <rect x="20" y="244" width="250" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.2" filter="url(#shadow1)"/>
+  <text x="145" y="268" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">Workload API</text>
+  <text x="145" y="286" text-anchor="middle" font-size="11" fill="#64748b">(gRPC over Unix socket)</text>
+
+  <line x1="275" y1="272" x2="425" y2="272" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowRight)"/>
+
+  <rect x="430" y="244" width="250" height="56" rx="8" fill="#6366f1" filter="url(#shadow1)"/>
+  <text x="555" y="268" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">MCP Protocol</text>
+  <text x="555" y="286" text-anchor="middle" font-size="11" fill="#c7d2fe"></text>
+
+  <!-- Row 4: Workload Attestor -> Agent Identity Discovery -->
+  <rect x="20" y="316" width="250" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.2" filter="url(#shadow1)"/>
+  <text x="145" y="344" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">Workload Attestor</text>
+  <text x="145" y="358" text-anchor="middle" font-size="11" fill="#64748b"></text>
+
+  <line x1="275" y1="344" x2="425" y2="344" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowRight)"/>
+
+  <rect x="430" y="316" width="250" height="56" rx="8" fill="#6366f1" filter="url(#shadow1)"/>
+  <text x="555" y="340" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">Agent Identity</text>
+  <text x="555" y="358" text-anchor="middle" font-size="11" fill="#c7d2fe">Discovery</text>
+
+  <!-- Row 5: SVID -> Agent Signing Key -->
+  <rect x="20" y="388" width="250" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.2" filter="url(#shadow1)"/>
+  <text x="145" y="416" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">SVID</text>
+  <text x="145" y="430" text-anchor="middle" font-size="11" fill="#64748b"></text>
+
+  <line x1="275" y1="416" x2="425" y2="416" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowRight)"/>
+
+  <rect x="430" y="388" width="250" height="56" rx="8" fill="#6366f1" filter="url(#shadow1)"/>
+  <text x="555" y="416" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">Agent Signing Key</text>
+  <text x="555" y="430" text-anchor="middle" font-size="11" fill="#c7d2fe"></text>
+
+  <!-- Row 6: Registration Entry -> .aflock Policy -->
+  <rect x="20" y="460" width="250" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.2" filter="url(#shadow1)"/>
+  <text x="145" y="488" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">Registration Entry</text>
+  <text x="145" y="502" text-anchor="middle" font-size="11" fill="#64748b"></text>
+
+  <line x1="275" y1="488" x2="425" y2="488" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowRight)"/>
+
+  <rect x="430" y="460" width="250" height="56" rx="8" fill="#6366f1" filter="url(#shadow1)"/>
+  <text x="555" y="488" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">.aflock Policy</text>
+  <text x="555" y="502" text-anchor="middle" font-size="11" fill="#c7d2fe"></text>
+
+  <!-- Row 7: SPIRE Server -> Central policy server -->
+  <rect x="20" y="532" width="250" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.2" filter="url(#shadow1)"/>
+  <text x="145" y="560" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">SPIRE Server</text>
+  <text x="145" y="574" text-anchor="middle" font-size="11" fill="#64748b"></text>
+
+  <line x1="275" y1="560" x2="425" y2="560" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrowRight)"/>
+
+  <rect x="430" y="532" width="250" height="56" rx="8" fill="#6366f1" opacity="0.7" filter="url(#shadow1)"/>
+  <rect x="430" y="532" width="250" height="56" rx="8" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="555" y="556" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">Central Policy Server</text>
+  <text x="555" y="574" text-anchor="middle" font-size="11" fill="#c7d2fe">(optional)</text>
+
+  <!-- Legend for dashed -->
+  <line x1="30" y1="606" x2="60" y2="606" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="66" y="610" font-size="10" fill="#64748b">= optional / future</text>
+</svg>

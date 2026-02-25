@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1220" width="800" height="1220" font-family="system-ui, sans-serif">
+  <defs>
+    <!-- Drop shadow filter -->
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e1e1e" flood-opacity="0.08"/>
+    </filter>
+    <!-- Arrow marker -->
+    <marker id="arrowDown" markerWidth="10" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1"/>
+    </marker>
+    <marker id="arrowRight" markerWidth="10" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="1220" fill="#f8fafc" rx="12"/>
+
+  <!-- Title bar -->
+  <rect x="0" y="0" width="800" height="52" fill="#6366f1" rx="12"/>
+  <rect x="0" y="24" width="800" height="28" fill="#6366f1"/>
+  <text x="400" y="33" text-anchor="middle" fill="#fff" font-size="16" font-weight="700" letter-spacing="0.5">VERIFICATION ALGORITHM FLOWCHART</text>
+
+  <!-- ==================== START NODE ==================== -->
+  <rect x="175" y="76" width="450" height="50" rx="25" fill="#6366f1" filter="url(#shadow)"/>
+  <text x="400" y="105" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">VERIFY(Policy, Attestations, Materials)</text>
+
+  <!-- Arrow: Start -> Phase 1 -->
+  <line x1="400" y1="126" x2="400" y2="156" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- ==================== PHASE 1 ==================== -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="160" width="440" height="90" rx="8" fill="#fff" stroke="#6366f1" stroke-width="2"/>
+    <rect x="140" y="160" width="440" height="32" rx="8" fill="#6366f1"/>
+    <rect x="140" y="180" width="440" height="12" fill="#6366f1"/>
+    <text x="360" y="181" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">Phase 1: Signature Verification</text>
+    <text x="360" y="218" text-anchor="middle" fill="#1e1e1e" font-size="12">Verify each attestation signature</text>
+    <text x="360" y="236" text-anchor="middle" fill="#1e1e1e" font-size="12">against trusted functionaries</text>
+  </g>
+  <!-- Phase 1 FAIL arrow -->
+  <line x1="580" y1="205" x2="640" y2="205" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRight)"/>
+  <rect x="648" y="192" width="60" height="26" rx="13" fill="#dc2626"/>
+  <text x="678" y="209" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">FAIL</text>
+
+  <!-- Arrow: Phase 1 -> Phase 2 -->
+  <line x1="400" y1="250" x2="400" y2="280" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- ==================== PHASE 2 ==================== -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="284" width="440" height="90" rx="8" fill="#fff" stroke="#6366f1" stroke-width="2"/>
+    <rect x="140" y="284" width="440" height="32" rx="8" fill="#818cf8"/>
+    <rect x="140" y="304" width="440" height="12" fill="#818cf8"/>
+    <text x="360" y="305" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">Phase 2: Identity Verification</text>
+    <text x="360" y="342" text-anchor="middle" fill="#1e1e1e" font-size="12">Match agent identity</text>
+    <text x="360" y="360" text-anchor="middle" fill="#1e1e1e" font-size="12">against policy constraints</text>
+  </g>
+  <!-- Phase 2 FAIL arrow -->
+  <line x1="580" y1="329" x2="640" y2="329" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRight)"/>
+  <rect x="648" y="316" width="60" height="26" rx="13" fill="#dc2626"/>
+  <text x="678" y="333" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">FAIL</text>
+
+  <!-- Arrow: Phase 2 -> Phase 3 -->
+  <line x1="400" y1="374" x2="400" y2="404" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- ==================== PHASE 3 ==================== -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="408" width="440" height="90" rx="8" fill="#fff" stroke="#6366f1" stroke-width="2"/>
+    <rect x="140" y="408" width="440" height="32" rx="8" fill="#6366f1"/>
+    <rect x="140" y="428" width="440" height="12" fill="#6366f1"/>
+    <text x="360" y="429" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">Phase 3: Materials Binding</text>
+    <text x="360" y="466" text-anchor="middle" fill="#1e1e1e" font-size="12">Verify session merkle root,</text>
+    <text x="360" y="484" text-anchor="middle" fill="#1e1e1e" font-size="12">git tree hash</text>
+  </g>
+  <!-- Phase 3 FAIL arrow -->
+  <line x1="580" y1="453" x2="640" y2="453" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRight)"/>
+  <rect x="648" y="440" width="60" height="26" rx="13" fill="#dc2626"/>
+  <text x="678" y="457" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">FAIL</text>
+
+  <!-- Arrow: Phase 3 -> Phase 4 -->
+  <line x1="400" y1="498" x2="400" y2="528" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- ==================== PHASE 4 ==================== -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="532" width="440" height="90" rx="8" fill="#fff" stroke="#818cf8" stroke-width="2"/>
+    <rect x="140" y="532" width="440" height="32" rx="8" fill="#818cf8"/>
+    <rect x="140" y="552" width="440" height="12" fill="#818cf8"/>
+    <text x="360" y="553" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">Phase 4: Constraint Evaluation</text>
+    <text x="360" y="590" text-anchor="middle" fill="#1e1e1e" font-size="12">Run Rego evaluators</text>
+    <text x="360" y="608" text-anchor="middle" fill="#1e1e1e" font-size="12">across all attestations</text>
+  </g>
+  <!-- Phase 4 FAIL arrow -->
+  <line x1="580" y1="577" x2="640" y2="577" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRight)"/>
+  <rect x="648" y="564" width="60" height="26" rx="13" fill="#dc2626"/>
+  <text x="678" y="581" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">FAIL</text>
+
+  <!-- Arrow: Phase 4 -> Phase 5 -->
+  <line x1="400" y1="622" x2="400" y2="652" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- ==================== PHASE 5 ==================== -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="656" width="440" height="90" rx="8" fill="#fff" stroke="#6366f1" stroke-width="2"/>
+    <rect x="140" y="656" width="440" height="32" rx="8" fill="#6366f1"/>
+    <rect x="140" y="676" width="440" height="12" fill="#6366f1"/>
+    <text x="360" y="677" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">Phase 5: AI Evaluation</text>
+    <text x="360" y="714" text-anchor="middle" fill="#1e1e1e" font-size="12">Run AI evaluators</text>
+    <text x="360" y="732" text-anchor="middle" fill="#1e1e1e" font-size="12">for qualitative checks</text>
+  </g>
+  <!-- Phase 5 FAIL arrow -->
+  <line x1="580" y1="701" x2="640" y2="701" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRight)"/>
+  <rect x="648" y="688" width="60" height="26" rx="13" fill="#dc2626"/>
+  <text x="678" y="705" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">FAIL</text>
+
+  <!-- Arrow: Phase 5 -> Phase 6 -->
+  <line x1="400" y1="746" x2="400" y2="776" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- ==================== PHASE 6 ==================== -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="780" width="440" height="90" rx="8" fill="#fff" stroke="#818cf8" stroke-width="2"/>
+    <rect x="140" y="780" width="440" height="32" rx="8" fill="#818cf8"/>
+    <rect x="140" y="800" width="440" height="12" fill="#818cf8"/>
+    <text x="360" y="801" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">Phase 6: Sublayout Recursion</text>
+    <text x="360" y="838" text-anchor="middle" fill="#1e1e1e" font-size="12">Recursively verify</text>
+    <text x="360" y="856" text-anchor="middle" fill="#1e1e1e" font-size="12">sub-agent attestations</text>
+  </g>
+  <!-- Phase 6 FAIL arrow -->
+  <line x1="580" y1="825" x2="640" y2="825" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowRight)"/>
+  <rect x="648" y="812" width="60" height="26" rx="13" fill="#dc2626"/>
+  <text x="678" y="829" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">FAIL</text>
+
+  <!-- Arrow: Phase 6 -> Decision -->
+  <line x1="400" y1="870" x2="400" y2="908" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- ==================== DECISION DIAMOND ==================== -->
+  <polygon points="400,912 460,950 400,988 340,950" fill="#eef2ff" stroke="#6366f1" stroke-width="2" filter="url(#shadow)"/>
+  <text x="400" y="946" text-anchor="middle" fill="#1e1e1e" font-size="11" font-weight="600">All</text>
+  <text x="400" y="960" text-anchor="middle" fill="#1e1e1e" font-size="11" font-weight="600">Pass?</text>
+
+  <!-- Arrow: Diamond -> PASS -->
+  <line x1="400" y1="988" x2="400" y2="1024" stroke="#16a34a" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <text x="415" y="1012" fill="#16a34a" font-size="11" font-weight="600">YES</text>
+
+  <!-- ==================== PASS NODE ==================== -->
+  <rect x="290" y="1028" width="220" height="50" rx="25" fill="#16a34a" filter="url(#shadow)"/>
+  <text x="400" y="1058" text-anchor="middle" fill="#fff" font-size="16" font-weight="700">PASS</text>
+  <text x="400" y="1073" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10">All phases succeeded</text>
+
+  <!-- ==================== FAIL AGGREGATE NODE ==================== -->
+  <!-- Vertical red line collecting all FAIL arrows -->
+  <line x1="728" y1="205" x2="728" y2="950" stroke="#dc2626" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
+
+  <!-- Connecting horizontal lines from each FAIL pill to the vertical red line -->
+  <line x1="708" y1="205" x2="728" y2="205" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="708" y1="329" x2="728" y2="329" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="708" y1="453" x2="728" y2="453" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="708" y1="577" x2="728" y2="577" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="708" y1="701" x2="728" y2="701" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.4"/>
+  <line x1="708" y1="825" x2="728" y2="825" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.4"/>
+
+  <!-- Arrow from Diamond NO to the right toward FAIL aggregate -->
+  <line x1="460" y1="950" x2="618" y2="950" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRight)"/>
+  <text x="520" y="942" fill="#dc2626" font-size="11" font-weight="600">NO</text>
+
+  <!-- Vertical red line meets horizontal -->
+  <line x1="728" y1="950" x2="640" y2="950" stroke="#dc2626" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
+
+  <!-- FAIL aggregate node -->
+  <g filter="url(#shadow)">
+    <rect x="626" y="930" width="130" height="64" rx="8" fill="#dc2626"/>
+    <text x="691" y="955" text-anchor="middle" fill="#fff" font-size="16" font-weight="700">FAIL</text>
+    <text x="691" y="975" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10">Verification failed</text>
+    <text x="691" y="987" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10">with error details</text>
+  </g>
+
+  <!-- ==================== LEGEND ==================== -->
+  <g transform="translate(140, 1110)">
+    <rect x="0" y="0" width="520" height="80" rx="8" fill="#eef2ff" stroke="#818cf8" stroke-width="1" opacity="0.6"/>
+    <text x="20" y="24" fill="#1e1e1e" font-size="11" font-weight="700">Legend:</text>
+
+    <!-- Main flow -->
+    <line x1="80" y1="19" x2="120" y2="19" stroke="#6366f1" stroke-width="2"/>
+    <polygon points="118,15 126,19 118,23" fill="#6366f1"/>
+    <text x="134" y="23" fill="#1e1e1e" font-size="11">Main flow (success path)</text>
+
+    <!-- Fail branch -->
+    <line x1="300" y1="19" x2="340" y2="19" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3"/>
+    <polygon points="338,15 346,19 338,23" fill="#dc2626"/>
+    <text x="354" y="23" fill="#1e1e1e" font-size="11">Failure branch</text>
+
+    <!-- Phase box -->
+    <rect x="20" y="40" width="40" height="20" rx="4" fill="#fff" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="72" y="55" fill="#1e1e1e" font-size="11">Phase step</text>
+
+    <!-- Pass indicator -->
+    <rect x="170" y="42" width="40" height="16" rx="8" fill="#16a34a"/>
+    <text x="222" y="55" fill="#1e1e1e" font-size="11">Pass</text>
+
+    <!-- Fail indicator -->
+    <rect x="280" y="42" width="40" height="16" rx="8" fill="#dc2626"/>
+    <text x="332" y="55" fill="#1e1e1e" font-size="11">Fail</text>
+  </g>
+</svg>

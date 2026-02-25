@@ -31,3 +31,8 @@ Thumbs.db
 
 # Docker volumes
 .docker-data/
+
+# Docusaurus
+docs-website/node_modules/
+docs-website/build/
+docs-website/.docusaurus/

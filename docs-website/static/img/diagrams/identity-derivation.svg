@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 520" width="820" height="520" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <!-- Arrow marker -->
+    <marker id="arrow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="10" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 3.5 L 0 7 z" fill="#818cf8"/>
+    </marker>
+    <!-- Arrow marker for credential branches -->
+    <marker id="arrow-dark" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="10" markerHeight="7" orient="auto-start-auto">
+      <path d="M 0 0 L 10 3.5 L 0 7 z" fill="#6366f1"/>
+    </marker>
+    <!-- Subtle drop shadow -->
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#6366f1" flood-opacity="0.10"/>
+    </filter>
+    <filter id="shadow-strong" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#6366f1" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="820" height="520" rx="12" fill="#f8faff"/>
+
+  <!-- Title -->
+  <text x="410" y="32" text-anchor="middle" font-size="15" font-weight="700" fill="#1e1e1e" letter-spacing="0.3">Agent Identity Derivation</text>
+
+  <!-- ===== LEFT SIDE: 5 Component Boxes ===== -->
+
+  <!-- 1. Model -->
+  <rect x="24" y="52" width="210" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1" filter="url(#shadow)"/>
+  <text x="42" y="76" font-size="10" font-weight="600" fill="#6366f1" letter-spacing="0.5" text-transform="uppercase">MODEL</text>
+  <text x="42" y="95" font-size="12.5" fill="#1e1e1e" font-family="'SF Mono', 'Fira Code', monospace, system-ui">claude-opus-4-5</text>
+
+  <!-- 2. Environment -->
+  <rect x="24" y="120" width="210" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1" filter="url(#shadow)"/>
+  <text x="42" y="144" font-size="10" font-weight="600" fill="#6366f1" letter-spacing="0.5">ENVIRONMENT</text>
+  <text x="42" y="163" font-size="12.5" fill="#1e1e1e" font-family="'SF Mono', 'Fira Code', monospace, system-ui">container, host, user</text>
+
+  <!-- 3. Tools -->
+  <rect x="24" y="188" width="210" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1" filter="url(#shadow)"/>
+  <text x="42" y="212" font-size="10" font-weight="600" fill="#6366f1" letter-spacing="0.5">TOOLS</text>
+  <text x="42" y="231" font-size="12.5" fill="#1e1e1e" font-family="'SF Mono', 'Fira Code', monospace, system-ui">[Read, Edit, Bash]</text>
+
+  <!-- 4. Policy Digest -->
+  <rect x="24" y="256" width="210" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1" filter="url(#shadow)"/>
+  <text x="42" y="280" font-size="10" font-weight="600" fill="#6366f1" letter-spacing="0.5">POLICY DIGEST</text>
+  <text x="42" y="299" font-size="12.5" fill="#1e1e1e" font-family="'SF Mono', 'Fira Code', monospace, system-ui">sha256:e4f7c2...</text>
+
+  <!-- 5. Parent Identity -->
+  <rect x="24" y="324" width="210" height="56" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1" filter="url(#shadow)"/>
+  <text x="42" y="348" font-size="10" font-weight="600" fill="#6366f1" letter-spacing="0.5">PARENT IDENTITY</text>
+  <text x="42" y="367" font-size="11.5" fill="#1e1e1e" font-style="italic">(if sub-agent)</text>
+
+  <!-- ===== ARROWS: Components to SHA256 ===== -->
+  <line x1="234" y1="80"  x2="348" y2="210" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="234" y1="148" x2="348" y2="210" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="234" y1="216" x2="348" y2="216" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="234" y1="284" x2="348" y2="222" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="234" y1="352" x2="348" y2="228" stroke="#818cf8" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+
+  <!-- ===== CENTER: SHA256 Hash Box ===== -->
+  <rect x="350" y="180" width="120" height="72" rx="36" fill="#6366f1" filter="url(#shadow-strong)"/>
+  <text x="410" y="210" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" letter-spacing="0.5">SHA256</text>
+  <text x="410" y="228" text-anchor="middle" font-size="9" fill="#c7d2fe">Hash Function</text>
+
+  <!-- ===== ARROW: SHA256 to Identity Result ===== -->
+  <line x1="470" y1="216" x2="540" y2="216" stroke="#818cf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ===== RIGHT: Identity Hash Result Box ===== -->
+  <rect x="548" y="170" width="248" height="92" rx="8" fill="#fff" stroke="#6366f1" stroke-width="2" filter="url(#shadow-strong)"/>
+  <rect x="548" y="170" width="248" height="30" rx="8" fill="#6366f1"/>
+  <!-- Clip the bottom corners of the header -->
+  <rect x="548" y="190" width="248" height="10" fill="#6366f1"/>
+  <text x="672" y="191" text-anchor="middle" font-size="11" font-weight="700" fill="#fff" letter-spacing="0.8">IDENTITY HASH</text>
+  <text x="672" y="225" text-anchor="middle" font-size="14" fill="#1e1e1e" font-weight="600" font-family="'SF Mono', 'Fira Code', monospace, system-ui">sha256:a1b2c3d4...</text>
+  <text x="672" y="248" text-anchor="middle" font-size="9.5" fill="#6366f1">Unique Agent Identity Fingerprint</text>
+
+  <!-- ===== CREDENTIAL BRANCHES ===== -->
+
+  <!-- Branch connector lines from Identity box -->
+  <!-- Vertical line down from identity box -->
+  <line x1="672" y1="262" x2="672" y2="296" stroke="#6366f1" stroke-width="1.5"/>
+
+  <!-- Horizontal spread line -->
+  <line x1="520" y1="296" x2="790" y2="296" stroke="#6366f1" stroke-width="1.5"/>
+
+  <!-- Vertical drops to each credential box -->
+  <line x1="548" y1="296" x2="548" y2="320" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrow-dark)"/>
+  <line x1="672" y1="296" x2="672" y2="320" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrow-dark)"/>
+  <line x1="784" y1="296" x2="784" y2="320" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrow-dark)"/>
+
+  <!-- Credential Box 1: SPIFFE/SPIRE -->
+  <rect x="468" y="326" width="162" height="76" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="468" y="326" width="162" height="26" rx="8" fill="#818cf8"/>
+  <rect x="468" y="344" width="162" height="8" fill="#818cf8"/>
+  <text x="549" y="345" text-anchor="middle" font-size="10" font-weight="700" fill="#fff" letter-spacing="0.4">SPIFFE / SPIRE</text>
+  <text x="549" y="372" text-anchor="middle" font-size="11" fill="#1e1e1e" font-weight="500">X.509 SVID</text>
+  <text x="549" y="390" text-anchor="middle" font-size="9" fill="#6366f1">Workload attestation</text>
+
+  <!-- Credential Box 2: Sigstore Keyless -->
+  <rect x="642" y="326" width="162" height="76" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="642" y="326" width="162" height="26" rx="8" fill="#818cf8"/>
+  <rect x="642" y="344" width="162" height="8" fill="#818cf8"/>
+  <text x="723" y="345" text-anchor="middle" font-size="10" font-weight="700" fill="#fff" letter-spacing="0.4">SIGSTORE KEYLESS</text>
+  <text x="723" y="372" text-anchor="middle" font-size="11" fill="#1e1e1e" font-weight="500">Short-lived Cert</text>
+  <text x="723" y="390" text-anchor="middle" font-size="9" fill="#6366f1">Transparency log backed</text>
+
+  <!-- Credential Box 3: Derived Key - shifted further left for balance -->
+  <rect x="468" y="414" width="336" height="76" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="468" y="414" width="336" height="26" rx="8" fill="#818cf8"/>
+  <rect x="468" y="432" width="336" height="8" fill="#818cf8"/>
+  <text x="636" y="433" text-anchor="middle" font-size="10" font-weight="700" fill="#fff" letter-spacing="0.4">DERIVED KEY</text>
+  <text x="636" y="462" text-anchor="middle" font-size="12" fill="#1e1e1e" font-weight="500" font-family="'SF Mono', 'Fira Code', monospace, system-ui">KDF(master_secret, identity)</text>
+  <text x="636" y="480" text-anchor="middle" font-size="9" fill="#6366f1">Deterministic key derivation</text>
+
+  <!-- Extra vertical line to Derived Key box -->
+  <line x1="672" y1="402" x2="672" y2="408" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrow-dark)"/>
+  <!-- small connector from bottom of cred boxes -->
+  <line x1="549" y1="402" x2="549" y2="412" stroke="none"/>
+  <line x1="723" y1="402" x2="723" y2="412" stroke="none"/>
+
+  <!-- Decorative dots along the left column to suggest more components could exist -->
+  <circle cx="129" cy="398" r="2" fill="#c7d2fe"/>
+  <circle cx="129" cy="408" r="2" fill="#c7d2fe"/>
+  <circle cx="129" cy="418" r="2" fill="#c7d2fe"/>
+
+  <!-- Legend at bottom-left -->
+  <text x="30" y="460" font-size="9" fill="#818cf8" font-weight="600" letter-spacing="0.3">INPUT COMPONENTS</text>
+  <line x1="30" y1="470" x2="70" y2="470" stroke="#818cf8" stroke-width="1.5" stroke-dasharray="4 2"/>
+  <text x="76" y="474" font-size="9" fill="#1e1e1e">Hash input</text>
+
+  <text x="30" y="494" font-size="9" fill="#6366f1" font-weight="600" letter-spacing="0.3">CREDENTIAL BINDING</text>
+  <line x1="30" y1="504" x2="70" y2="504" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="76" y="508" font-size="9" fill="#1e1e1e">Identity to credential</text>
+
+</svg>

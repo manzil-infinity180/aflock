@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 520" width="750" height="520" font-family="system-ui, sans-serif">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#6366f1" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="750" height="520" rx="12" fill="#f8f9fc"/>
+
+  <!-- ===== PARENT AGENT BOX ===== -->
+  <rect x="175" y="28" width="400" height="120" rx="8" fill="#fff" stroke="#6366f1" stroke-width="2" filter="url(#shadow)"/>
+  <!-- Header bar -->
+  <rect x="175" y="28" width="400" height="34" rx="8" fill="#6366f1"/>
+  <rect x="175" y="50" width="400" height="12" fill="#6366f1"/>
+  <text x="375" y="50" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">Parent Agent Policy (parent.aflock)</text>
+
+  <!-- Parent body text -->
+  <text x="195" y="86" fill="#4b5563" font-size="12" font-family="ui-monospace, monospace">sublayouts: [research, testing]</text>
+  <text x="195" y="106" fill="#4b5563" font-size="12" font-family="ui-monospace, monospace">maxSpend: $10</text>
+
+  <!-- Spend bar visual -->
+  <rect x="195" y="118" width="360" height="6" rx="3" fill="#eef2ff"/>
+  <rect x="195" y="118" width="360" height="6" rx="3" fill="#6366f1" opacity="0.3"/>
+  <text x="560" y="125" fill="#6366f1" font-size="9" font-weight="500">$10 budget</text>
+
+  <!-- ===== ARROWS ===== -->
+  <line x1="300" y1="148" x2="200" y2="218" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="6,3"/>
+  <line x1="450" y1="148" x2="550" y2="218" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowhead)" stroke-dasharray="6,3"/>
+
+  <!-- Arrow labels -->
+  <text x="225" y="183" fill="#6366f1" font-size="10" font-weight="500" text-anchor="middle" transform="rotate(-20, 225, 183)">delegates</text>
+  <text x="525" y="183" fill="#6366f1" font-size="10" font-weight="500" text-anchor="middle" transform="rotate(20, 525, 183)">delegates</text>
+
+  <!-- ===== RESEARCH AGENT BOX ===== -->
+  <rect x="38" y="222" width="300" height="130" rx="8" fill="#fff" stroke="#818cf8" stroke-width="1.5" filter="url(#shadow)"/>
+  <!-- Header bar -->
+  <rect x="38" y="222" width="300" height="30" rx="8" fill="#818cf8"/>
+  <rect x="38" y="242" width="300" height="10" fill="#818cf8"/>
+  <text x="188" y="243" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Research Agent (research-agent.aflock)</text>
+
+  <!-- Research body -->
+  <text x="56" y="274" fill="#4b5563" font-size="11" font-family="ui-monospace, monospace">limits:</text>
+  <text x="108" y="274" fill="#1e1e1e" font-size="11" font-family="ui-monospace, monospace">maxSpend: $2</text>
+  <text x="56" y="294" fill="#4b5563" font-size="11" font-family="ui-monospace, monospace">tools:</text>
+  <rect x="104" y="283" width="72" height="18" rx="4" fill="#eef2ff"/>
+  <text x="140" y="296" text-anchor="middle" fill="#6366f1" font-size="10" font-weight="500">WebFetch</text>
+  <text x="56" y="316" fill="#4b5563" font-size="11" font-family="ui-monospace, monospace">attestations:</text>
+  <rect x="150" y="305" width="80" height="18" rx="4" fill="#eef2ff"/>
+  <text x="190" y="318" text-anchor="middle" fill="#6366f1" font-size="10" font-weight="500">research-*</text>
+
+  <!-- Spend bar -->
+  <rect x="56" y="332" width="264" height="6" rx="3" fill="#eef2ff"/>
+  <rect x="56" y="332" width="53" height="6" rx="3" fill="#818cf8" opacity="0.5"/>
+  <text x="324" y="339" fill="#818cf8" font-size="9" font-weight="500">$2</text>
+
+  <!-- ===== TESTING AGENT BOX ===== -->
+  <rect x="412" y="222" width="300" height="130" rx="8" fill="#fff" stroke="#818cf8" stroke-width="1.5" filter="url(#shadow)"/>
+  <!-- Header bar -->
+  <rect x="412" y="222" width="300" height="30" rx="8" fill="#818cf8"/>
+  <rect x="412" y="242" width="300" height="10" fill="#818cf8"/>
+  <text x="562" y="243" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">Testing Agent (test-agent.aflock)</text>
+
+  <!-- Testing body -->
+  <text x="430" y="274" fill="#4b5563" font-size="11" font-family="ui-monospace, monospace">limits:</text>
+  <text x="482" y="274" fill="#1e1e1e" font-size="11" font-family="ui-monospace, monospace">maxSpend: $3</text>
+  <text x="430" y="294" fill="#4b5563" font-size="11" font-family="ui-monospace, monospace">tools:</text>
+  <rect x="478" y="283" width="50" height="18" rx="4" fill="#eef2ff"/>
+  <text x="503" y="296" text-anchor="middle" fill="#6366f1" font-size="10" font-weight="500">Bash</text>
+  <text x="430" y="316" fill="#4b5563" font-size="11" font-family="ui-monospace, monospace">attestations:</text>
+  <rect x="524" y="305" width="56" height="18" rx="4" fill="#eef2ff"/>
+  <text x="552" y="318" text-anchor="middle" fill="#6366f1" font-size="10" font-weight="500">test-*</text>
+
+  <!-- Spend bar -->
+  <rect x="430" y="332" width="264" height="6" rx="3" fill="#eef2ff"/>
+  <rect x="430" y="332" width="79" height="6" rx="3" fill="#818cf8" opacity="0.5"/>
+  <text x="698" y="339" fill="#818cf8" font-size="9" font-weight="500">$3</text>
+
+  <!-- ===== PROPERTY LABELS ===== -->
+  <!-- Divider line -->
+  <line x1="50" y1="380" x2="700" y2="380" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="375" y="374" text-anchor="middle" fill="#9ca3af" font-size="9" font-weight="500" letter-spacing="1.5">KEY PROPERTIES</text>
+
+  <!-- Property 1: Attenuation -->
+  <rect x="38" y="396" width="160" height="50" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <circle cx="56" cy="414" r="8" fill="#6366f1"/>
+  <text x="56" y="418" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">1</text>
+  <text x="72" y="418" fill="#1e1e1e" font-size="11" font-weight="600">Attenuation</text>
+  <text x="50" y="436" fill="#4b5563" font-size="10">limits &lt;= parent</text>
+
+  <!-- Property 2: Accumulation -->
+  <rect x="214" y="396" width="160" height="50" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <circle cx="232" cy="414" r="8" fill="#6366f1"/>
+  <text x="232" y="418" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">2</text>
+  <text x="248" y="418" fill="#1e1e1e" font-size="11" font-weight="600">Accumulation</text>
+  <text x="226" y="436" fill="#4b5563" font-size="10">spend -> parent total</text>
+
+  <!-- Property 3: Namespacing -->
+  <rect x="390" y="396" width="168" height="50" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <circle cx="408" cy="414" r="8" fill="#6366f1"/>
+  <text x="408" y="418" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">3</text>
+  <text x="424" y="418" fill="#1e1e1e" font-size="11" font-weight="600">Namespacing</text>
+  <text x="402" y="436" fill="#4b5563" font-size="10">prefixed attestations</text>
+
+  <!-- Property 4: Recursion -->
+  <rect x="574" y="396" width="160" height="50" rx="8" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <circle cx="592" cy="414" r="8" fill="#6366f1"/>
+  <text x="592" y="418" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">4</text>
+  <text x="608" y="418" fill="#1e1e1e" font-size="11" font-weight="600">Recursion</text>
+  <text x="586" y="436" fill="#4b5563" font-size="10">verify recursively</text>
+
+  <!-- ===== DOTTED ACCUMULATION LINES ===== -->
+  <!-- Left agent spend flowing up -->
+  <line x1="130" y1="342" x2="130" y2="360" stroke="#818cf8" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+  <line x1="130" y1="360" x2="375" y2="360" stroke="#818cf8" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+  <!-- Right agent spend flowing up -->
+  <line x1="620" y1="342" x2="620" y2="360" stroke="#818cf8" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+  <line x1="620" y1="360" x2="375" y2="360" stroke="#818cf8" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+
+  <!-- Footer -->
+  <text x="375" y="480" text-anchor="middle" fill="#9ca3af" font-size="10">Sub-layout Hierarchy in aflock -- Parent policies attenuate child capabilities</text>
+</svg>

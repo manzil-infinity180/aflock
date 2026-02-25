@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 820" width="800" height="820" font-family="system-ui, sans-serif">
+  <defs>
+    <filter id="shadow2" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="#000" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrowDown" markerWidth="10" markerHeight="10" refX="5" refY="10" orient="auto">
+      <polygon points="0 0, 10 0, 5 10" fill="#6366f1"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="820" rx="12" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="400" y="38" text-anchor="middle" font-size="18" font-weight="700" fill="#1e1e1e">MCP Identity Discovery Process</text>
+  <line x1="230" y1="50" x2="570" y2="50" stroke="#c7d2fe" stroke-width="1.5"/>
+
+  <!-- ===== Box 1: Claude Code (Agent) ===== -->
+  <rect x="100" y="70" width="600" height="130" rx="8" fill="#fff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow2)"/>
+  <!-- Header bar -->
+  <rect x="100" y="70" width="600" height="36" rx="8" fill="#6366f1"/>
+  <rect x="100" y="90" width="600" height="16" fill="#6366f1"/>
+  <text x="400" y="93" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Claude Code (Agent)</text>
+
+  <!-- PID badge -->
+  <rect x="580" y="76" width="100" height="22" rx="11" fill="#818cf8"/>
+  <text x="630" y="91" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">PID: 12345</text>
+
+  <!-- Box 1 content -->
+  <rect x="140" y="120" width="520" height="64" rx="6" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="170" y="143" font-size="12" font-weight="600" fill="#1e1e1e">MCP Client</text>
+  <text x="170" y="163" font-size="11" fill="#64748b">tools: [Read, Edit, Write, Bash, Grep, Glob, WebFetch, Task, ...]</text>
+
+  <!-- Arrow 1->2 -->
+  <line x1="400" y1="200" x2="400" y2="248" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <rect x="330" y="214" width="140" height="22" rx="6" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="400" y="229" text-anchor="middle" font-size="10" font-weight="600" fill="#6366f1">Unix Domain Socket</text>
+
+  <!-- ===== Box 2: aflock MCP Server ===== -->
+  <rect x="100" y="260" width="600" height="210" rx="8" fill="#fff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow2)"/>
+  <!-- Header bar -->
+  <rect x="100" y="260" width="600" height="36" rx="8" fill="#6366f1"/>
+  <rect x="100" y="280" width="600" height="16" fill="#6366f1"/>
+  <text x="400" y="283" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">aflock MCP Server</text>
+
+  <!-- Step 1 -->
+  <rect x="130" y="310" width="540" height="40" rx="6" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <circle cx="152" cy="330" r="11" fill="#6366f1"/>
+  <text x="152" y="334" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">1</text>
+  <text x="175" y="326" font-size="12" font-weight="600" fill="#1e1e1e">Get peer PID from socket</text>
+  <text x="175" y="343" font-size="11" fill="#64748b">SO_PEERCRED (Linux) / LOCAL_PEERCRED (macOS)</text>
+
+  <!-- Step 2 -->
+  <rect x="130" y="360" width="540" height="40" rx="6" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <circle cx="152" cy="380" r="11" fill="#6366f1"/>
+  <text x="152" y="384" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">2</text>
+  <text x="175" y="376" font-size="12" font-weight="600" fill="#1e1e1e">Introspect process</text>
+  <text x="175" y="393" font-size="11" fill="#64748b">/proc/{pid}/cmdline, cwd, environ</text>
+
+  <!-- Step 3 -->
+  <rect x="130" y="410" width="540" height="40" rx="6" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <circle cx="152" cy="430" r="11" fill="#6366f1"/>
+  <text x="152" y="434" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">3</text>
+  <text x="175" y="426" font-size="12" font-weight="600" fill="#1e1e1e">Extract identity components</text>
+  <text x="175" y="443" font-size="11" fill="#64748b">Parse flags, env vars, tool lists, policy files</text>
+
+  <!-- Arrow 2->3 -->
+  <line x1="400" y1="470" x2="400" y2="518" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <rect x="345" y="484" width="110" height="22" rx="6" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="400" y="499" text-anchor="middle" font-size="10" font-weight="600" fill="#6366f1">Resolve Identity</text>
+
+  <!-- ===== Box 3: Identity Resolution ===== -->
+  <rect x="100" y="530" width="600" height="130" rx="8" fill="#fff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow2)"/>
+  <!-- Header bar -->
+  <rect x="100" y="530" width="600" height="36" rx="8" fill="#818cf8"/>
+  <rect x="100" y="550" width="600" height="16" fill="#818cf8"/>
+  <text x="400" y="553" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Identity Resolution</text>
+
+  <!-- Resolved fields -->
+  <g font-size="12" fill="#1e1e1e">
+    <text x="150" y="590"><tspan font-weight="600" fill="#6366f1">model:</tspan> claude-opus-4</text>
+    <text x="150" y="612"><tspan font-weight="600" fill="#6366f1">environment:</tspan> macos:user:dev</text>
+    <text x="440" y="590"><tspan font-weight="600" fill="#6366f1">tools:</tspan> [Read, Edit, ...]</text>
+    <text x="440" y="612"><tspan font-weight="600" fill="#6366f1">policyDigest:</tspan> sha256:...</text>
+  </g>
+
+  <!-- Source annotations -->
+  <text x="340" y="590" font-size="9" fill="#818cf8">(from --model flag)</text>
+  <text x="635" y="590" font-size="9" fill="#818cf8">(from MCP)</text>
+  <text x="330" y="612" font-size="9" fill="#818cf8">(from env)</text>
+  <text x="610" y="643" font-size="9" fill="#818cf8">(from .aflock file)</text>
+
+  <!-- Arrow 3->4 -->
+  <line x1="400" y1="660" x2="400" y2="708" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <rect x="342" y="674" width="116" height="22" rx="6" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="400" y="689" text-anchor="middle" font-size="10" font-weight="600" fill="#6366f1">Hash Identity</text>
+
+  <!-- ===== Box 4: Key Assignment ===== -->
+  <rect x="100" y="720" width="600" height="80" rx="8" fill="#fff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow2)"/>
+  <!-- Header bar -->
+  <rect x="100" y="720" width="600" height="36" rx="8" fill="#6366f1"/>
+  <rect x="100" y="740" width="600" height="16" fill="#6366f1"/>
+  <text x="400" y="743" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Key Assignment</text>
+
+  <!-- Key content -->
+  <text x="400" y="780" text-anchor="middle" font-size="12" fill="#1e1e1e">
+    <tspan font-weight="600" fill="#6366f1">Identity hash</tspan>
+    <tspan fill="#64748b"> &#x2192; </tspan>
+    <tspan>Lookup / derive signing key</tspan>
+  </text>
+
+  <!-- Key icon -->
+  <rect x="260" y="766" width="16" height="16" rx="3" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="268" y="779" text-anchor="middle" font-size="11">&#x1f511;</text>
+</svg>
