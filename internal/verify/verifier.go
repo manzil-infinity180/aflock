@@ -90,7 +90,7 @@ func (v *Verifier) VerifySession(sessionID string) (*Result, error) {
 
 	// Check 1: Policy limits (post-hoc)
 	if sessionState.Policy.Limits != nil {
-		evaluator := policy.NewEvaluator(sessionState.Policy)
+		evaluator := policy.NewEvaluator(sessionState.Policy, filepath.Dir(sessionState.PolicyPath))
 		exceeded, limitName, msg := evaluator.CheckLimits(sessionState.Metrics, "post-hoc")
 		if exceeded {
 			result.Success = false

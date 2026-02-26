@@ -160,6 +160,15 @@ func (s *Server) Serve(policyPath string) error {
 	return server.ServeStdio(s.mcpServer)
 }
 
+// projectRoot returns the directory containing the policy file.
+func (s *Server) projectRoot() string {
+	if s.policyPath != "" {
+		return filepath.Dir(s.policyPath)
+	}
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
 // handleGetIdentity returns the agent's derived identity.
 func (s *Server) handleGetIdentity(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if s.agentIdentity == nil {
@@ -208,7 +217,7 @@ func (s *Server) handleCheckTool(ctx context.Context, request mcp.CallToolReques
 	}
 
 	inputJSON, _ := json.Marshal(toolInputMap)
-	evaluator := policy.NewEvaluator(s.policy)
+	evaluator := policy.NewEvaluator(s.policy, s.projectRoot())
 	decision, reason := evaluator.EvaluatePreToolUse(toolName, inputJSON)
 
 	result := map[string]any{
@@ -229,7 +238,7 @@ func (s *Server) handleBash(ctx context.Context, request mcp.CallToolRequest) (*
 	// Check policy
 	if s.policy != nil {
 		inputJSON, _ := json.Marshal(map[string]string{"command": command})
-		evaluator := policy.NewEvaluator(s.policy)
+		evaluator := policy.NewEvaluator(s.policy, s.projectRoot())
 		decision, reason := evaluator.EvaluatePreToolUse("Bash", inputJSON)
 
 		if decision == aflock.DecisionDeny {
@@ -278,7 +287,7 @@ func (s *Server) handleReadFile(ctx context.Context, request mcp.CallToolRequest
 	// Check policy
 	if s.policy != nil {
 		inputJSON, _ := json.Marshal(map[string]string{"file_path": filePath})
-		evaluator := policy.NewEvaluator(s.policy)
+		evaluator := policy.NewEvaluator(s.policy, s.projectRoot())
 		decision, reason := evaluator.EvaluatePreToolUse("Read", inputJSON)
 
 		if decision == aflock.DecisionDeny {
@@ -314,7 +323,7 @@ func (s *Server) handleWriteFile(ctx context.Context, request mcp.CallToolReques
 	// Check policy
 	if s.policy != nil {
 		inputJSON, _ := json.Marshal(map[string]string{"file_path": filePath})
-		evaluator := policy.NewEvaluator(s.policy)
+		evaluator := policy.NewEvaluator(s.policy, s.projectRoot())
 		decision, reason := evaluator.EvaluatePreToolUse("Write", inputJSON)
 
 		if decision == aflock.DecisionDeny {

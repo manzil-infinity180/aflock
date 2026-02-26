@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/aflock-ai/aflock/internal/identity"
@@ -191,7 +192,8 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 	}
 
 	pol := sessionState.Policy
-	evaluator := policy.NewEvaluator(pol)
+	projectRoot := filepath.Dir(sessionState.PolicyPath)
+	evaluator := policy.NewEvaluator(pol, projectRoot)
 
 	// First evaluate tool/file access
 	decision, reason := evaluator.EvaluatePreToolUse(input.ToolName, input.ToolInput)
@@ -225,12 +227,10 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 		output.ExitWithWarning(fmt.Sprintf("Failed to save session state: %v", err))
 	}
 
-	// Return decision
+	// Return decision as proper JSON response
 	switch decision {
 	case aflock.DecisionDeny:
-		// Exit with code 2 to block and provide feedback
-		output.ExitWithError(fmt.Sprintf("[aflock] BLOCKED: %s", reason))
-		return nil
+		return output.Write(output.PreToolUseDeny(fmt.Sprintf("[aflock] BLOCKED: %s", reason)))
 	case aflock.DecisionAsk:
 		return output.Write(output.PreToolUseAsk(reason))
 	default:
@@ -266,7 +266,7 @@ func (h *Handler) handlePostToolUse(input *aflock.HookInput) error {
 
 	// Check fail-fast limits after tool execution
 	if sessionState.Policy != nil && sessionState.Policy.Limits != nil {
-		evaluator := policy.NewEvaluator(sessionState.Policy)
+		evaluator := policy.NewEvaluator(sessionState.Policy, filepath.Dir(sessionState.PolicyPath))
 		exceeded, limitName, msg := evaluator.CheckLimits(sessionState.Metrics, "fail-fast")
 		if exceeded {
 			return output.Write(output.PostToolUseBlock(
@@ -354,7 +354,7 @@ func (h *Handler) handleSessionEnd(input *aflock.HookInput) error {
 
 	// Check post-hoc limits
 	if sessionState.Policy.Limits != nil {
-		evaluator := policy.NewEvaluator(sessionState.Policy)
+		evaluator := policy.NewEvaluator(sessionState.Policy, filepath.Dir(sessionState.PolicyPath))
 		exceeded, limitName, msg := evaluator.CheckLimits(sessionState.Metrics, "post-hoc")
 		if exceeded {
 			// Log warning but don't block session end

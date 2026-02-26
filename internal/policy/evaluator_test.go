@@ -52,7 +52,7 @@ func TestEvaluatePreToolUse_AllowList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, json.RawMessage(tt.toolInput))
 
 			if decision != tt.wantDecision {
@@ -116,7 +116,7 @@ func TestEvaluatePreToolUse_DenyList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, json.RawMessage(tt.toolInput))
 
 			if decision != tt.wantDecision {
@@ -167,7 +167,7 @@ func TestEvaluatePreToolUse_RequireApproval(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, json.RawMessage(tt.toolInput))
 
 			if decision != tt.wantDecision {
@@ -259,7 +259,7 @@ func TestEvaluateFileAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			input := json.RawMessage(`{"file_path": "` + tt.filePath + `"}`)
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, input)
 
@@ -320,7 +320,7 @@ func TestEvaluateDomainAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			input := json.RawMessage(`{"url": "` + tt.url + `"}`)
 			decision, reason := e.EvaluatePreToolUse("WebFetch", input)
 
@@ -417,7 +417,7 @@ func TestCheckLimits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			exceeded, limitName, _ := e.CheckLimits(tt.metrics, tt.enforcement)
 
 			if exceeded != tt.wantExceed {

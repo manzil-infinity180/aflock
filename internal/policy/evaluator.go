@@ -12,15 +12,19 @@ import (
 
 // Evaluator evaluates policy rules against hook inputs.
 type Evaluator struct {
-	policy  *aflock.Policy
-	matcher *Matcher
+	policy      *aflock.Policy
+	matcher     *Matcher
+	projectRoot string // absolute path to project root (where .aflock lives)
 }
 
 // NewEvaluator creates a new policy evaluator.
-func NewEvaluator(policy *aflock.Policy) *Evaluator {
+// projectRoot is the absolute path to the project directory (used to relativize file paths).
+// If empty, only absolute and basename matching are used.
+func NewEvaluator(policy *aflock.Policy, projectRoot string) *Evaluator {
 	return &Evaluator{
-		policy:  policy,
-		matcher: NewMatcher(),
+		policy:      policy,
+		matcher:     NewMatcher(),
+		projectRoot: projectRoot,
 	}
 }
 
@@ -94,6 +98,22 @@ func (e *Evaluator) extractInputForMatching(toolName string, toolInput json.RawM
 		if err := json.Unmarshal(toolInput, &input); err == nil {
 			return input.FilePath
 		}
+	case "Glob":
+		var input aflock.GlobToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil {
+			if input.Path != "" {
+				return input.Path
+			}
+			return input.Pattern
+		}
+	case "Grep":
+		var input aflock.GrepToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil {
+			if input.Path != "" {
+				return input.Path
+			}
+			return input.Pattern
+		}
 	case "Task":
 		var input aflock.TaskToolInput
 		if err := json.Unmarshal(toolInput, &input); err == nil {
@@ -108,25 +128,89 @@ func (e *Evaluator) extractInputForMatching(toolName string, toolInput json.RawM
 	return ""
 }
 
+// extractFilePath extracts the file path from tool input, handling different tool input formats.
+func extractFilePath(toolName string, toolInput json.RawMessage) (string, bool) {
+	switch toolName {
+	case "Read", "Write", "Edit":
+		var input aflock.FileToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil && input.FilePath != "" {
+			return input.FilePath, true
+		}
+	case "Glob":
+		var input aflock.GlobToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil {
+			// Glob's path field is the directory to search in
+			if input.Path != "" {
+				return input.Path, true
+			}
+		}
+	case "Grep":
+		var input aflock.GrepToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil {
+			if input.Path != "" {
+				return input.Path, true
+			}
+		}
+	}
+	return "", false
+}
+
+// filePathVariants returns all path forms to try when matching against glob patterns.
+// This handles the mismatch between relative policy patterns (e.g., "src/**") and
+// absolute paths from Claude Code (e.g., "/Users/.../src/main.go").
+func (e *Evaluator) filePathVariants(filePath string) []string {
+	variants := []string{filepath.Clean(filePath), filePath}
+
+	// Add basename (e.g., "main.go" from "/Users/.../src/main.go")
+	base := filepath.Base(filePath)
+	if base != filePath {
+		variants = append(variants, base)
+	}
+
+	// Add path relative to project root (most important for matching policy patterns)
+	if e.projectRoot != "" {
+		absPath := filePath
+		if !filepath.IsAbs(absPath) {
+			absPath = filepath.Join(e.projectRoot, absPath)
+		}
+		relPath, err := filepath.Rel(e.projectRoot, absPath)
+		if err == nil && relPath != filePath && !strings.HasPrefix(relPath, "..") {
+			variants = append(variants, relPath)
+		}
+	}
+
+	return variants
+}
+
+// matchFilePattern checks if any path variant matches the glob pattern.
+func (e *Evaluator) matchFilePattern(pattern string, variants []string) bool {
+	for _, v := range variants {
+		if e.matcher.MatchGlob(pattern, v) {
+			return true
+		}
+	}
+	return false
+}
+
 // evaluateFileAccess checks file access against policy.
 func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessage) (aflock.PermissionDecision, string) {
 	if e.policy.Files == nil {
 		return aflock.DecisionAllow, ""
 	}
 
-	var input aflock.FileToolInput
-	if err := json.Unmarshal(toolInput, &input); err != nil {
+	filePath, ok := extractFilePath(toolName, toolInput)
+	if !ok {
+		// Could not extract a file path from the input — deny for safety
+		// rather than silently allowing unrecognized input.
 		return aflock.DecisionAllow, ""
 	}
 
-	filePath := input.FilePath
-
-	// Normalize path for matching
-	normalizedPath := filepath.Clean(filePath)
+	// Build all path variants for matching (absolute, relative, basename)
+	variants := e.filePathVariants(filePath)
 
 	// Check deny patterns first
 	for _, pattern := range e.policy.Files.Deny {
-		if e.matcher.MatchGlob(pattern, normalizedPath) || e.matcher.MatchGlob(pattern, filePath) {
+		if e.matchFilePattern(pattern, variants) {
 			return aflock.DecisionDeny, fmt.Sprintf("File '%s' matches deny pattern '%s'", filePath, pattern)
 		}
 	}
@@ -134,7 +218,7 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 	// Check readOnly for write operations
 	if toolName == "Write" || toolName == "Edit" {
 		for _, pattern := range e.policy.Files.ReadOnly {
-			if e.matcher.MatchGlob(pattern, normalizedPath) || e.matcher.MatchGlob(pattern, filepath.Base(filePath)) {
+			if e.matchFilePattern(pattern, variants) {
 				return aflock.DecisionDeny, fmt.Sprintf("File '%s' is read-only (matches '%s')", filePath, pattern)
 			}
 		}
@@ -144,7 +228,7 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 	if len(e.policy.Files.Allow) > 0 {
 		allowed := false
 		for _, pattern := range e.policy.Files.Allow {
-			if e.matcher.MatchGlob(pattern, normalizedPath) || e.matcher.MatchGlob(pattern, filePath) {
+			if e.matchFilePattern(pattern, variants) {
 				allowed = true
 				break
 			}
