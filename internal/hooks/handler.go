@@ -2,10 +2,13 @@
 package hooks
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aflock-ai/aflock/internal/identity"
@@ -27,12 +30,21 @@ func NewHandler() *Handler {
 	}
 }
 
+// maxStdinSize is the maximum bytes we'll read from stdin for hook input.
+// Hook inputs are JSON with tool names, inputs, and session metadata. 10 MB
+// is generous for any legitimate hook invocation. This prevents OOM from
+// adversarial stdin (e.g., piped /dev/urandom).
+const maxStdinSize = 10 * 1024 * 1024 // 10 MB
+
 // Handle reads input from stdin and dispatches to the appropriate handler.
 func (h *Handler) Handle(hookName string) error {
-	// Read input from stdin
-	data, err := io.ReadAll(os.Stdin)
+	// Read input from stdin with size limit to prevent OOM
+	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinSize+1))
 	if err != nil {
 		return fmt.Errorf("read stdin: %w", err)
+	}
+	if len(data) > maxStdinSize {
+		return fmt.Errorf("stdin input too large (> %d bytes)", maxStdinSize)
 	}
 
 	var input aflock.HookInput
@@ -116,7 +128,7 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 }
 
 // buildPolicyContext creates context string describing the active policy.
-func (h *Handler) buildPolicyContext(pol *aflock.Policy, agentIdentity *identity.AgentIdentity) string {
+func (h *Handler) buildPolicyContext(pol *aflock.Policy, agentIdentity *identity.AgentIdentity) string { //nolint:gocognit // policy context assembly requires many checks
 	ctx := fmt.Sprintf("# aflock Policy Active: %s\n\n", pol.Name)
 
 	if agentIdentity != nil {
@@ -125,7 +137,11 @@ func (h *Handler) buildPolicyContext(pol *aflock.Policy, agentIdentity *identity
 		if agentIdentity.Binary != nil {
 			ctx += fmt.Sprintf("- Binary: %s@%s\n", agentIdentity.Binary.Name, agentIdentity.Binary.Version)
 		}
-		ctx += fmt.Sprintf("- Identity Hash: %s\n\n", agentIdentity.IdentityHash[:16])
+		idHash := agentIdentity.IdentityHash
+		if len(idHash) > 16 {
+			idHash = idHash[:16]
+		}
+		ctx += fmt.Sprintf("- Identity Hash: %s\n\n", idHash)
 	}
 
 	if pol.Limits != nil {
@@ -172,11 +188,16 @@ func (h *Handler) buildPolicyContext(pol *aflock.Policy, agentIdentity *identity
 
 // handlePreToolUse evaluates policy before tool execution.
 func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
-	// Load session state
-	sessionState, err := h.stateManager.Load(input.SessionID)
-	if err != nil {
-		output.ExitWithWarning(fmt.Sprintf("Failed to load session state: %v", err))
-		return nil
+	// Load session state. If session ID is empty or invalid, treat as no
+	// session state and fall through to ephemeral policy loading below.
+	var sessionState *aflock.SessionState
+	if input.SessionID != "" {
+		var err error
+		sessionState, err = h.stateManager.Load(input.SessionID)
+		if err != nil {
+			output.ExitWithWarning(fmt.Sprintf("Failed to load session state: %v", err))
+			return nil
+		}
 	}
 
 	// If no session state, try to load policy directly (for when SessionStart wasn't run)
@@ -240,11 +261,15 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 
 // handlePostToolUse records tool execution and updates metrics.
 func (h *Handler) handlePostToolUse(input *aflock.HookInput) error {
-	// Load session state
-	sessionState, err := h.stateManager.Load(input.SessionID)
-	if err != nil {
-		output.ExitWithWarning(fmt.Sprintf("Failed to load session state: %v", err))
-		return nil
+	// Load session state. Skip loading if no session ID (ephemeral session).
+	var sessionState *aflock.SessionState
+	if input.SessionID != "" {
+		var err error
+		sessionState, err = h.stateManager.Load(input.SessionID)
+		if err != nil {
+			output.ExitWithWarning(fmt.Sprintf("Failed to load session state: %v", err))
+			return nil
+		}
 	}
 
 	if sessionState == nil {
@@ -319,7 +344,9 @@ func (h *Handler) handleUserPromptSubmit(input *aflock.HookInput) error {
 func (h *Handler) handleStop(input *aflock.HookInput) error {
 	sessionState, err := h.stateManager.Load(input.SessionID)
 	if err != nil {
-		return output.Write(output.StopAllow())
+		// Fail-closed: if we can't load state, we can't verify attestations
+		return output.Write(output.StopBlock(
+			fmt.Sprintf("[aflock] Cannot stop: failed to load session state: %v", err)))
 	}
 
 	if sessionState == nil || sessionState.Policy == nil {
@@ -328,15 +355,24 @@ func (h *Handler) handleStop(input *aflock.HookInput) error {
 
 	// Check if required attestations are present
 	if len(sessionState.Policy.RequiredAttestations) > 0 {
-		// TODO: Check attestation directory for required steps
-		// For now, allow stop
+		attestDir := h.stateManager.AttestationsDir(input.SessionID)
+		var missing []string
+		for _, required := range sessionState.Policy.RequiredAttestations {
+			if !findAttestation(attestDir, required) {
+				missing = append(missing, required)
+			}
+		}
+		if len(missing) > 0 {
+			return output.Write(output.StopBlock(
+				fmt.Sprintf("[aflock] Cannot stop: missing required attestations: %v", missing)))
+		}
 	}
 
 	return output.Write(output.StopAllow())
 }
 
 // handleSubagentStop checks sublayout constraints.
-func (h *Handler) handleSubagentStop(input *aflock.HookInput) error {
+func (h *Handler) handleSubagentStop(_ *aflock.HookInput) error {
 	// Similar to Stop, but for subagents
 	return output.Write(output.StopAllow())
 }
@@ -370,20 +406,102 @@ func (h *Handler) handleSessionEnd(input *aflock.HookInput) error {
 }
 
 // handleNotification logs notifications.
-func (h *Handler) handleNotification(input *aflock.HookInput) error {
+func (h *Handler) handleNotification(_ *aflock.HookInput) error {
 	// Just acknowledge
 	return output.WriteEmpty()
 }
 
 // handlePreCompact records compaction event.
-func (h *Handler) handlePreCompact(input *aflock.HookInput) error {
+func (h *Handler) handlePreCompact(_ *aflock.HookInput) error {
 	// Just acknowledge
 	return output.WriteEmpty()
 }
 
+// findAttestation checks if an attestation file exists for the given name.
+// It first checks for exact filename matches (name.json, name.intoto.json),
+// then scans all .intoto.json files in the directory and checks if any
+// attestation's tool name matches the required name.
+func findAttestation(dir, name string) bool {
+	// First try exact filename match
+	exactPaths := []string{
+		filepath.Join(dir, name+".json"),
+		filepath.Join(dir, name+".intoto.json"),
+	}
+	for _, p := range exactPaths {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+
+	// Scan attestation files and check their content for matching tool names.
+	// This handles the case where filenames are timestamp-prefixed (e.g., 20260210-143022-ab3def12.intoto.json)
+	// but the required attestation is a logical name (e.g., "Bash").
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !isAttestationFile(entry.Name()) {
+			continue
+		}
+		if attestationMatchesName(filepath.Join(dir, entry.Name()), name) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isAttestationFile checks if a filename looks like an attestation file.
+func isAttestationFile(name string) bool {
+	return strings.HasSuffix(name, ".intoto.json") || strings.HasSuffix(name, ".json")
+}
+
+// attestationMatchesName checks if an attestation file's content matches the required name.
+// It looks at the predicate's toolName field in action attestations.
+func attestationMatchesName(path, name string) bool {
+	data, err := os.ReadFile(path) //nolint:gosec // G304: attestation file path from state directory
+	if err != nil {
+		return false
+	}
+
+	// Parse envelope to get payload
+	var envelope struct {
+		Payload string `json:"payload"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return false
+	}
+
+	payload, err := base64.StdEncoding.DecodeString(envelope.Payload)
+	if err != nil {
+		return false
+	}
+
+	// Parse statement to get predicate
+	var statement struct {
+		Predicate json.RawMessage `json:"predicate"`
+	}
+	if err := json.Unmarshal(payload, &statement); err != nil {
+		return false
+	}
+
+	// Check if the predicate's toolName matches
+	var predicate struct {
+		ToolName string `json:"toolName"`
+		Action   string `json:"action"`
+	}
+	if err := json.Unmarshal(statement.Predicate, &predicate); err != nil {
+		return false
+	}
+
+	return strings.EqualFold(predicate.ToolName, name) || strings.EqualFold(predicate.Action, name)
+}
+
 func isFileOperation(toolName string) bool {
 	switch toolName {
-	case "Read", "Write", "Edit", "Glob", "Grep":
+	case "Read", "Write", "Edit", "Glob", "Grep", "NotebookEdit":
 		return true
 	default:
 		return false

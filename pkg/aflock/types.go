@@ -68,6 +68,28 @@ type WebFetchToolInput struct {
 	Prompt string `json:"prompt,omitempty"`
 }
 
+// GrepToolInput represents the input for the Grep tool.
+type GrepToolInput struct {
+	Pattern string `json:"pattern"`
+	Path    string `json:"path,omitempty"`
+}
+
+// GlobToolInput represents the input for the Glob tool.
+type GlobToolInput struct {
+	Pattern string `json:"pattern"`
+	Path    string `json:"path,omitempty"`
+}
+
+// WebSearchToolInput represents the input for the WebSearch tool.
+type WebSearchToolInput struct {
+	Query string `json:"query"`
+}
+
+// NotebookEditToolInput represents the input for the NotebookEdit tool.
+type NotebookEditToolInput struct {
+	NotebookPath string `json:"notebook_path"`
+}
+
 // PermissionDecision represents the decision for PreToolUse hooks.
 type PermissionDecision string
 
@@ -107,14 +129,14 @@ type DecisionOutput struct {
 }
 
 // Policy represents an .aflock policy file.
-// It combines go-witness verification policy with real-time tool execution rules.
+// It combines attestation verification policy with real-time tool execution rules.
 type Policy struct {
 	// Metadata
 	Version string     `json:"version"`
 	Name    string     `json:"name"`
 	Expires *time.Time `json:"expires,omitempty"`
 
-	// go-witness verification fields (evaluated at verification time)
+	// Attestation verification fields (evaluated at verification time)
 	Roots map[string]Root `json:"roots,omitempty"` // CA roots for signature verification
 	Steps map[string]Step `json:"steps,omitempty"` // Required steps with functionaries and attestations
 

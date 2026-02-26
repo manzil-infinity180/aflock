@@ -1,4 +1,4 @@
-// Package attestation provides go-witness attestor integration for aflock.
+// Package attestation provides attestor integration for aflock.
 package attestation
 
 import (
@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/in-toto/go-witness/attestation"
-	"github.com/in-toto/go-witness/attestation/commandrun"
-	"github.com/in-toto/go-witness/attestation/environment"
-	"github.com/in-toto/go-witness/attestation/git"
-	"github.com/in-toto/go-witness/attestation/material"
-	"github.com/in-toto/go-witness/attestation/product"
-	"github.com/in-toto/go-witness/cryptoutil"
+	"github.com/aflock-ai/rookery/attestation"
+	"github.com/aflock-ai/rookery/attestation/cryptoutil"
+	"github.com/aflock-ai/rookery/plugins/attestors/commandrun"
+	"github.com/aflock-ai/rookery/plugins/attestors/environment"
+	"github.com/aflock-ai/rookery/plugins/attestors/git"
+	"github.com/aflock-ai/rookery/plugins/attestors/material"
+	"github.com/aflock-ai/rookery/plugins/attestors/product"
 )
 
 // RunResult contains the result of running attestors around a command.
@@ -36,7 +36,7 @@ type RunResult struct {
 	Duration time.Duration
 }
 
-// RunAttestors executes go-witness attestors around a command and returns the collection.
+// RunAttestors executes attestors around a command and returns the collection.
 // This captures:
 // - Environment variables (filtered for security)
 // - Git state (commit, branch, remotes)
@@ -236,7 +236,7 @@ func AttestationPath(baseDir, treeHash, stepName string) string {
 // EnsureAttestationDir ensures the attestation directory exists for a given tree hash.
 func EnsureAttestationDir(baseDir, treeHash string) error {
 	dir := filepath.Join(baseDir, treeHash)
-	return os.MkdirAll(dir, 0755)
+	return os.MkdirAll(dir, 0750)
 }
 
 // ListAttestations returns all attestation files for a given tree hash.

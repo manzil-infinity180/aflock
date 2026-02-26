@@ -2,7 +2,15 @@
 package main
 
 import (
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -82,7 +90,7 @@ var initCmd = &cobra.Command{
   }
 }
 `
-		if err := os.WriteFile(".aflock", []byte(template), 0644); err != nil {
+		if err := os.WriteFile(".aflock", []byte(template), 0600); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create .aflock: %v\n", err)
 			os.Exit(1)
 		}
@@ -185,25 +193,180 @@ var statusCmd = &cobra.Command{
 	},
 }
 
+var signKeyPath string
+var signOutputPath string
+
 var signCmd = &cobra.Command{
 	Use:   "sign <policy.aflock>",
 	Short: "Sign a policy file",
-	Long: `Sign a policy file with keyless signing (Sigstore OIDC).
+	Long: `Sign a policy file with an ECDSA key.
 
-This creates a signed policy that cannot be modified by the agent.`,
+If no key is provided via --key or AFLOCK_SIGNING_KEY, a new ephemeral
+key is generated and the public key is printed to stderr.
+
+This creates a DSSE-signed policy envelope that cannot be modified by the agent.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Implement signing
-		fmt.Printf("Signing not yet implemented for: %s\n", args[0])
+		policyPath := args[0]
+
+		// Read the policy file
+		policyData, err := os.ReadFile(policyPath) //nolint:gosec // G304: policy file path from CLI arg
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read policy: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Validate it's valid JSON
+		var policyJSON json.RawMessage
+		if err := json.Unmarshal(policyData, &policyJSON); err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid policy JSON: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Load or generate signing key
+		keyPath := signKeyPath
+		if keyPath == "" {
+			keyPath = os.Getenv("AFLOCK_SIGNING_KEY")
+		}
+
+		var privKey *ecdsa.PrivateKey
+		if keyPath != "" {
+			keyData, err := os.ReadFile(keyPath) //nolint:gosec // G304: key file path from CLI arg
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to read key: %v\n", err)
+				os.Exit(1)
+			}
+			privKey, err = parseECDSAPrivateKey(keyData)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to parse key: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			// Generate ephemeral key
+			privKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to generate key: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stderr, "Generated ephemeral signing key (no --key provided)\n")
+		}
+
+		// Compute keyid as SHA256 fingerprint of the DER-encoded public key
+		pubDER, err := x509.MarshalPKIXPublicKey(&privKey.PublicKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to marshal public key: %v\n", err)
+			os.Exit(1)
+		}
+		keyFingerprint := sha256.Sum256(pubDER)
+		keyID := fmt.Sprintf("SHA256:%x", keyFingerprint)
+
+		// For ephemeral keys, output the public key PEM so the user can verify later
+		if keyPath == "" {
+			pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+			fmt.Fprintf(os.Stderr, "Public key (save this to verify signatures):\n%s", pubPEM)
+		}
+
+		// Create DSSE envelope
+		payloadType := "application/vnd.aflock.policy+json"
+		payload := base64.StdEncoding.EncodeToString(policyData)
+
+		// Create PAE (Pre-Authentication Encoding)
+		paeData := createSignPAE(payloadType, policyData)
+		hash := sha256.Sum256(paeData)
+
+		// Sign
+		sigBytes, err := ecdsa.SignASN1(rand.Reader, privKey, hash[:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to sign: %v\n", err)
+			os.Exit(1)
+		}
+
+		envelope := struct {
+			PayloadType string `json:"payloadType"`
+			Payload     string `json:"payload"`
+			Signatures  []struct {
+				KeyID string `json:"keyid"`
+				Sig   string `json:"sig"`
+			} `json:"signatures"`
+		}{
+			PayloadType: payloadType,
+			Payload:     payload,
+			Signatures: []struct {
+				KeyID string `json:"keyid"`
+				Sig   string `json:"sig"`
+			}{
+				{
+					KeyID: keyID,
+					Sig:   base64.StdEncoding.EncodeToString(sigBytes),
+				},
+			},
+		}
+
+		envelopeJSON, err := json.MarshalIndent(envelope, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to marshal envelope: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Write output
+		outputPath := signOutputPath
+		if outputPath == "" {
+			outputPath = policyPath + ".signed"
+		}
+
+		if outputPath == "-" {
+			fmt.Println(string(envelopeJSON))
+		} else {
+			if err := os.WriteFile(outputPath, envelopeJSON, 0600); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to write signed policy: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stderr, "Signed policy written to %s\n", outputPath)
+		}
 	},
 }
 
+// createSignPAE creates a DSSE Pre-Authentication Encoding.
+func createSignPAE(payloadType string, payload []byte) []byte {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload))
+	buf.Write(payload)
+	return buf.Bytes()
+}
+
+// parseECDSAPrivateKey parses a PEM-encoded ECDSA private key.
+func parseECDSAPrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block found in key file")
+	}
+
+	// Try EC private key format (SEC1) first
+	key, ecErr := x509.ParseECPrivateKey(block.Bytes)
+	if ecErr == nil {
+		return key, nil
+	}
+
+	// Try PKCS8
+	pkcs8Key, pkcs8Err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if pkcs8Err != nil {
+		return nil, fmt.Errorf("failed to parse private key (SEC1: %v; PKCS8: %w)", ecErr, pkcs8Err)
+	}
+
+	ecKey, ok := pkcs8Key.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("key is not an ECDSA private key (got %T)", pkcs8Key)
+	}
+	return ecKey, nil
+}
+
 var servePolicyPath string
+var serveHTTPPort int
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the aflock MCP server",
-	Long: `Start the aflock MCP server on stdio.
+	Long: `Start the aflock MCP server on stdio or HTTP.
 
 The MCP server provides tools for AI agents with policy enforcement:
 - get_identity: Get the agent's derived identity
@@ -214,7 +377,7 @@ The MCP server provides tools for AI agents with policy enforcement:
 - write_file: Write files with policy enforcement
 - get_session: Get current session metrics
 
-Configure in Claude Code settings.json:
+For stdio (Claude Code):
 {
   "mcpServers": {
     "aflock": {
@@ -222,10 +385,20 @@ Configure in Claude Code settings.json:
       "args": ["serve"]
     }
   }
-}`,
+}
+
+For HTTP (OpenClaw via mcporter):
+  aflock serve --http 8787 --policy .aflock
+  mcporter config add aflock http://localhost:8787/sse`,
 	Run: func(cmd *cobra.Command, args []string) {
 		server := mcp.NewServer()
-		if err := server.Serve(servePolicyPath); err != nil {
+		var err error
+		if serveHTTPPort > 0 {
+			err = server.ServeHTTP(servePolicyPath, serveHTTPPort)
+		} else {
+			err = server.Serve(servePolicyPath)
+		}
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
 			os.Exit(1)
 		}
@@ -250,8 +423,13 @@ func init() {
 	verifyCmd.Flags().StringVarP(&verifyAttestDir, "attestations", "a", "", "Attestations directory (default: ~/.aflock/attestations)")
 	verifyCmd.Flags().StringVar(&verifyTreeHash, "tree-hash", "", "Git tree hash to verify (default: current HEAD)")
 
+	// Sign command flags
+	signCmd.Flags().StringVarP(&signKeyPath, "key", "k", "", "Path to ECDSA private key PEM file (or set AFLOCK_SIGNING_KEY)")
+	signCmd.Flags().StringVarP(&signOutputPath, "output", "o", "", "Output path for signed envelope (default: <input>.signed, use - for stdout)")
+
 	// Serve command flags
 	serveCmd.Flags().StringVarP(&servePolicyPath, "policy", "p", "", "Path to .aflock policy file")
+	serveCmd.Flags().IntVar(&serveHTTPPort, "http", 0, "HTTP port for SSE transport (default: stdio)")
 }
 
 func main() {
