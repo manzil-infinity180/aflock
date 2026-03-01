@@ -675,7 +675,7 @@ func (v *Verifier) verifyStepAttestation(attestPath string, step *aflock.Step, p
 	}
 
 	// Verify signatures against functionaries
-	if pol.Roots == nil || len(pol.Roots) == 0 {
+	if len(pol.Roots) == 0 {
 		return fmt.Errorf("policy has no trusted roots: signature verification cannot be performed")
 	}
 

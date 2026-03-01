@@ -678,8 +678,12 @@ func writeJSONLFile(t *testing.T, path string, entries []map[string]interface{})
 		if err != nil {
 			t.Fatalf("Failed to marshal entry: %v", err)
 		}
-		f.Write(data)
-		f.Write([]byte("\n"))
+		if _, err := f.Write(data); err != nil {
+			t.Fatalf("Failed to write data to JSONL file: %v", err)
+		}
+		if _, err := f.Write([]byte("\n")); err != nil {
+			t.Fatalf("Failed to write newline to JSONL file: %v", err)
+		}
 	}
 }
 
