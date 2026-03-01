@@ -62,22 +62,23 @@ type TaskToolInput struct {
 	SubagentType string `json:"subagent_type,omitempty"`
 }
 
-// WebFetchToolInput represents the input for the WebFetch tool.
-type WebFetchToolInput struct {
-	URL    string `json:"url"`
-	Prompt string `json:"prompt,omitempty"`
+// GlobToolInput represents the input for the Glob tool.
+type GlobToolInput struct {
+	Pattern string `json:"pattern"`
+	Path    string `json:"path,omitempty"`
 }
 
 // GrepToolInput represents the input for the Grep tool.
 type GrepToolInput struct {
 	Pattern string `json:"pattern"`
 	Path    string `json:"path,omitempty"`
+	Glob    string `json:"glob,omitempty"`
 }
 
-// GlobToolInput represents the input for the Glob tool.
-type GlobToolInput struct {
-	Pattern string `json:"pattern"`
-	Path    string `json:"path,omitempty"`
+// WebFetchToolInput represents the input for the WebFetch tool.
+type WebFetchToolInput struct {
+	URL    string `json:"url"`
+	Prompt string `json:"prompt,omitempty"`
 }
 
 // WebSearchToolInput represents the input for the WebSearch tool.

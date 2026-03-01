@@ -28,12 +28,16 @@ import (
 
 // Server is the aflock MCP server.
 type Server struct {
-	mcpServer      *server.MCPServer
-	stateManager   *state.Manager
-	policy         *aflock.Policy
-	policyPath     string
-	agentIdentity  *identity.AgentIdentity
-	sessionID      string
+	mcpServer     *server.MCPServer
+	stateManager  *state.Manager
+	policy        *aflock.Policy
+	policyPath    string
+	agentIdentity *identity.AgentIdentity
+	sessionID     string
+
+	// In-memory data flow tracking (thread-safe for concurrent MCP requests)
+	mu        sync.Mutex
+	materials []aflock.MaterialClassification
 	signer         *attestation.Signer
 	signingEnabled bool
 	attestDir      string     // Directory for storing step attestations by git tree hash
@@ -218,6 +222,15 @@ func (s *Server) Serve(policyPath string) error {
 	return server.ServeStdio(s.mcpServer)
 }
 
+// projectRoot returns the directory containing the policy file.
+func (s *Server) projectRoot() string {
+	if s.policyPath != "" {
+		return filepath.Dir(s.policyPath)
+	}
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
 // ServeHTTP starts the MCP server on HTTP with SSE transport.
 // This keeps the server running so session state persists across calls.
 func (s *Server) ServeHTTP(policyPath string, port int) error {
@@ -372,7 +385,7 @@ func (s *Server) handleCheckTool(ctx context.Context, request mcp.CallToolReques
 	}
 
 	inputJSON, _ := json.Marshal(toolInputMap)
-	evaluator := policy.NewEvaluator(s.policy)
+	evaluator := policy.NewEvaluator(s.policy, s.projectRoot())
 	decision, reason := evaluator.EvaluatePreToolUse(toolName, inputJSON)
 
 	result := map[string]any{
@@ -415,7 +428,7 @@ func (s *Server) handleBash(ctx context.Context, request mcp.CallToolRequest) (*
 
 	// Check policy
 	if s.policy != nil { //nolint:nestif
-		evaluator := policy.NewEvaluator(s.policy)
+		evaluator := policy.NewEvaluator(s.policy, s.projectRoot())
 		decision, policyReason := evaluator.EvaluatePreToolUse("Bash", inputJSON)
 
 		if decision == aflock.DecisionDeny {
@@ -492,6 +505,15 @@ func (s *Server) handleBash(ctx context.Context, request mcp.CallToolRequest) (*
 			}
 			fmt.Fprintf(os.Stderr, "[aflock] BLOCKED data exfiltration: %s\n", flowReason)
 			return mcp.NewToolResultError(fmt.Sprintf("DataFlow policy denied: %s", flowReason)), nil
+		}
+
+		// Evaluate data flow — Bash is a write operation, check flow rules
+		s.mu.Lock()
+		flowDecision, flowReason, _ := evaluator.EvaluateDataFlow("Bash", inputJSON, s.materials)
+		s.mu.Unlock()
+		if flowDecision == aflock.DecisionDeny {
+			s.recordAction("Bash", "deny", flowReason)
+			return mcp.NewToolResultError(fmt.Sprintf("Data flow violation: %s", flowReason)), nil
 		}
 	}
 
@@ -638,7 +660,7 @@ func (s *Server) handleReadFile(ctx context.Context, request mcp.CallToolRequest
 
 	// Check policy
 	if s.policy != nil { //nolint:nestif
-		evaluator := policy.NewEvaluator(s.policy)
+		evaluator := policy.NewEvaluator(s.policy, s.projectRoot())
 		decision, reason := evaluator.EvaluatePreToolUse("Read", inputJSON)
 
 		if decision == aflock.DecisionDeny {
@@ -724,7 +746,7 @@ func (s *Server) handleWriteFile(ctx context.Context, request mcp.CallToolReques
 
 	// Check policy
 	if s.policy != nil { //nolint:nestif
-		evaluator := policy.NewEvaluator(s.policy)
+		evaluator := policy.NewEvaluator(s.policy, s.projectRoot())
 		decision, reason := evaluator.EvaluatePreToolUse("Write", inputJSON)
 
 		if decision == aflock.DecisionDeny {

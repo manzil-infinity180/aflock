@@ -25,15 +25,19 @@ const (
 
 // Evaluator evaluates policy rules against hook inputs.
 type Evaluator struct {
-	policy  *aflock.Policy
-	matcher *Matcher
+	policy      *aflock.Policy
+	matcher     *Matcher
+	projectRoot string // absolute path to project root (where .aflock lives)
 }
 
 // NewEvaluator creates a new policy evaluator.
-func NewEvaluator(policy *aflock.Policy) *Evaluator {
+// projectRoot is the absolute path to the project directory (used to relativize file paths).
+// If empty, only absolute and basename matching are used.
+func NewEvaluator(policy *aflock.Policy, projectRoot string) *Evaluator {
 	return &Evaluator{
-		policy:  policy,
-		matcher: NewMatcher(),
+		policy:      policy,
+		matcher:     NewMatcher(),
+		projectRoot: projectRoot,
 	}
 }
 
@@ -116,14 +120,20 @@ func (e *Evaluator) extractInputForMatching(toolName string, toolInput json.RawM
 		if err := json.Unmarshal(toolInput, &input); err == nil {
 			return input.FilePath
 		}
-	case toolGrep:
-		var input aflock.GrepToolInput
-		if err := json.Unmarshal(toolInput, &input); err == nil {
-			return input.Pattern
-		}
 	case toolGlob:
 		var input aflock.GlobToolInput
 		if err := json.Unmarshal(toolInput, &input); err == nil {
+			if input.Path != "" {
+				return input.Path
+			}
+			return input.Pattern
+		}
+	case toolGrep:
+		var input aflock.GrepToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil {
+			if input.Path != "" {
+				return input.Path
+			}
 			return input.Pattern
 		}
 	case toolNotebookEdit:
@@ -150,38 +160,86 @@ func (e *Evaluator) extractInputForMatching(toolName string, toolInput json.RawM
 	return ""
 }
 
-// extractFilePath extracts the file/directory path from tool input.
+// extractFilePath extracts the file path from tool input, handling different tool input formats.
 // Different tools use different JSON field names for their path:
 //   - Read/Write/Edit: "file_path"
-//   - Grep/Glob: "path"
+//   - Grep/Glob: "path" (optional, defaults to CWD)
 //   - NotebookEdit: "notebook_path"
+//
+// Returns (path, error). A nil error with empty path means the JSON was valid but the
+// path field was empty/missing (normal for Glob/Grep where path defaults to CWD).
+// A non-nil error means malformed JSON (fail-closed).
 func extractFilePath(toolName string, toolInput json.RawMessage) (string, error) {
 	switch toolName {
-	case toolGrep:
-		var input aflock.GrepToolInput
-		if err := json.Unmarshal(toolInput, &input); err != nil {
-			return "", err
-		}
-		return input.Path, nil
 	case toolGlob:
 		var input aflock.GlobToolInput
 		if err := json.Unmarshal(toolInput, &input); err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to parse file tool input: %w", err)
+		}
+		return input.Path, nil
+	case toolGrep:
+		var input aflock.GrepToolInput
+		if err := json.Unmarshal(toolInput, &input); err != nil {
+			return "", fmt.Errorf("failed to parse file tool input: %w", err)
 		}
 		return input.Path, nil
 	case toolNotebookEdit:
 		var input aflock.NotebookEditToolInput
 		if err := json.Unmarshal(toolInput, &input); err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to parse file tool input: %w", err)
 		}
 		return input.NotebookPath, nil
 	default:
 		var input aflock.FileToolInput
 		if err := json.Unmarshal(toolInput, &input); err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to parse file tool input: %w", err)
 		}
 		return input.FilePath, nil
 	}
+}
+
+// filePathVariants returns all path forms to try when matching against glob patterns.
+// This handles the mismatch between relative policy patterns (e.g., "src/**") and
+// absolute paths from Claude Code (e.g., "/Users/.../src/main.go").
+func (e *Evaluator) filePathVariants(filePath string) []string {
+	variants := []string{filepath.Clean(filePath), filePath}
+
+	// Add basename (e.g., "main.go" from "/Users/.../src/main.go")
+	base := filepath.Base(filePath)
+	if base != filePath {
+		variants = append(variants, base)
+	}
+
+	// Add path relative to project root (most important for matching policy patterns)
+	if e.projectRoot != "" {
+		absPath := filePath
+		if !filepath.IsAbs(absPath) {
+			absPath = filepath.Join(e.projectRoot, absPath)
+		}
+		relPath, err := filepath.Rel(e.projectRoot, absPath)
+		if err == nil && relPath != filePath && !strings.HasPrefix(relPath, "..") {
+			variants = append(variants, relPath)
+		}
+	}
+
+	return variants
+}
+
+// matchFilePattern checks if any path variant matches the glob pattern.
+func (e *Evaluator) matchFilePattern(pattern string, variants []string) bool {
+	for _, v := range variants {
+		if e.matcher.MatchGlob(pattern, v) {
+			return true
+		}
+	}
+	return false
+}
+
+// isDirectoryTool returns true for tools that scan directories rather than access individual files.
+// These tools (Glob, Grep) take a starting directory and search within it. Their "path" is a
+// search root, not a specific file being accessed.
+func isDirectoryTool(toolName string) bool {
+	return toolName == toolGlob || toolName == toolGrep
 }
 
 // evaluateFileAccess checks file access against policy.
@@ -194,29 +252,37 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 
 	filePath, err := extractFilePath(toolName, toolInput)
 	if err != nil {
-		return aflock.DecisionDeny, fmt.Sprintf("failed to parse file tool input: %v", err)
+		// Malformed JSON — fail-closed
+		return aflock.DecisionDeny, err.Error()
 	}
 
-	// Normalize path for matching
-	normalizedPath := filepath.Clean(filePath)
+	if filePath == "" {
+		// Valid JSON but no path specified.
+		// For directory tools (Glob/Grep), path is optional (defaults to CWD) — allow.
+		if isDirectoryTool(toolName) {
+			return aflock.DecisionAllow, ""
+		}
+		// For other file tools, empty path won't match any allow patterns, so fall
+		// through to the allow-list check below which will deny appropriately.
+	}
 
-	// For directory-based tools (Grep, Glob), the path is a directory being searched.
-	// We need to also check if files WITHIN the directory would match deny patterns.
-	// e.g., if path is "/etc" and deny pattern is "/etc/**", the glob won't match
-	// "/etc" directly but should deny since the tool will access files under /etc.
-	isDirectoryTool := toolName == toolGrep || toolName == toolGlob
+	// Build all path variants for matching (absolute, relative, basename)
+	variants := e.filePathVariants(filePath)
 
 	// Check deny patterns first
 	for _, pattern := range e.policy.Files.Deny {
-		if e.matcher.MatchGlob(pattern, normalizedPath) || e.matcher.MatchGlob(pattern, filePath) {
+		if e.matchFilePattern(pattern, variants) {
 			return aflock.DecisionDeny, fmt.Sprintf("File '%s' matches deny pattern '%s'", filePath, pattern)
 		}
-		// For directory tools, also check if a child path would match.
-		// This handles patterns like "/etc/**" when the tool path is "/etc".
-		if isDirectoryTool && normalizedPath != "" {
-			childPath := normalizedPath + "/check"
-			if e.matcher.MatchGlob(pattern, childPath) {
-				return aflock.DecisionDeny, fmt.Sprintf("Directory '%s' matches deny pattern '%s' (contains denied files)", filePath, pattern)
+		// For directory tools, also check if children of this directory would match deny.
+		// e.g., if searching from "secrets/" and deny has "**/secrets/**", the directory
+		// itself might not match but files within it would.
+		if isDirectoryTool(toolName) {
+			for _, v := range variants {
+				childPath := v + "/child"
+				if e.matcher.MatchGlob(pattern, childPath) {
+					return aflock.DecisionDeny, fmt.Sprintf("Directory '%s' contains denied files (matches '%s')", filePath, pattern)
+				}
 			}
 		}
 	}
@@ -224,7 +290,7 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 	// Check readOnly for write operations
 	if toolName == toolWrite || toolName == toolEdit {
 		for _, pattern := range e.policy.Files.ReadOnly {
-			if e.matcher.MatchGlob(pattern, normalizedPath) || e.matcher.MatchGlob(pattern, filepath.Base(filePath)) {
+			if e.matchFilePattern(pattern, variants) {
 				return aflock.DecisionDeny, fmt.Sprintf("File '%s' is read-only (matches '%s')", filePath, pattern)
 			}
 		}
@@ -234,11 +300,37 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 	if len(e.policy.Files.Allow) > 0 {
 		allowed := false
 		for _, pattern := range e.policy.Files.Allow {
-			if e.matcher.MatchGlob(pattern, normalizedPath) || e.matcher.MatchGlob(pattern, filePath) {
+			if e.matchFilePattern(pattern, variants) {
 				allowed = true
 				break
 			}
 		}
+
+		// For directory tools (Glob, Grep), if the path is the project root (".")
+		// or resolves to it, allow the search. These tools scan directories and return
+		// results — they don't write or modify files. The deny patterns above already
+		// block access to sensitive directories, and individual file Read/Write/Edit
+		// operations have their own allow checks.
+		if !allowed && isDirectoryTool(toolName) {
+			for _, v := range variants {
+				if v == "." {
+					allowed = true
+					break
+				}
+				// Also check if any child of this directory would match an allow pattern
+				childPath := v + "/child"
+				for _, pattern := range e.policy.Files.Allow {
+					if e.matcher.MatchGlob(pattern, childPath) {
+						allowed = true
+						break
+					}
+				}
+				if allowed {
+					break
+				}
+			}
+		}
+
 		if !allowed {
 			return aflock.DecisionDeny, fmt.Sprintf("File '%s' not in allow list", filePath)
 		}

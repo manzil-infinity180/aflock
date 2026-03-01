@@ -77,7 +77,7 @@ func TestSecurity_R3_280_EvaluatorIncludesNotebookEdit(t *testing.T) {
 		},
 	}
 
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 
 	// The evaluator's file check should fire for NotebookEdit
 	decision, reason := evaluator.EvaluatePreToolUse("NotebookEdit",
@@ -111,7 +111,7 @@ func TestSecurity_R3_281_NilToolInputBypassesCommandDenyPattern(t *testing.T) {
 
 	// Normal case: Bash with "rm -rf /" should be denied
 	// (This triggers os.Exit(2) so we can't test directly, but verify via evaluator)
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 
 	// With valid input -- correctly denied
 	decision, _ := evaluator.EvaluatePreToolUse("Bash",
@@ -146,7 +146,7 @@ func TestSecurity_R3_281_BareToolDenyWorksWithNilInput(t *testing.T) {
 		},
 	}
 
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 	decision, _ := evaluator.EvaluatePreToolUse("Bash", nil)
 
 	if decision != aflock.DecisionDeny {
@@ -196,7 +196,7 @@ func TestSecurity_R3_282_MaterialsAppendNotMutexProtected(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 
 	// First read classifies as "internal"
 	_, _, mat1 := evaluator.EvaluateDataFlow("Read",
@@ -475,7 +475,7 @@ func TestSecurity_R3_286_CorruptedSessionPolicyFailsOpen(t *testing.T) {
 	ss := seedSession(t, h, "session-corrupt", pol)
 
 	// Verify Bash is denied under normal conditions (via evaluator)
-	evaluator := policy.NewEvaluator(ss.Policy)
+	evaluator := policy.NewEvaluator(ss.Policy, "")
 	decision, _ := evaluator.EvaluatePreToolUse("Bash",
 		json.RawMessage(`{"command": "rm -rf /"}`))
 	if decision != aflock.DecisionDeny {
@@ -876,7 +876,7 @@ func TestSecurity_R3_294_DataFlowLabelPrioritySortBug(t *testing.T) {
 		},
 	}
 
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 
 	// Reading a .secret file matches BOTH labels, but due to sort,
 	// "internal" wins (alphabetically first)
@@ -938,7 +938,7 @@ func TestSecurity_R3_295_ExpiredPolicyNotChecked(t *testing.T) {
 	// Note: The question is whether expired policies should be enforced or not.
 	// Currently they are enforced, which might be correct from a "fail-closed"
 	// perspective, but the IsExpired() method exists and is never called.
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 	decision, _ := evaluator.EvaluatePreToolUse("Bash",
 		json.RawMessage(`{"command": "ls"}`))
 

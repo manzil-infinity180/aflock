@@ -45,7 +45,7 @@ func TestDataFlowExfiltrationPrevention(t *testing.T) {
 		},
 	}
 
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 	stateManager := state.NewManager(t.TempDir())
 
 	// Create a session

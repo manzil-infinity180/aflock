@@ -46,7 +46,7 @@ func TestMCPDataFlowEnforcement(t *testing.T) {
 	sessionID := "test-session"
 	sessionState := stateManager.Initialize(sessionID, pol, "")
 
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 
 	// Step 1: Simulate read_file of bank-account.csv
 	t.Run("read sensitive file", func(t *testing.T) {
@@ -131,7 +131,7 @@ func TestDataFlowSequencing(t *testing.T) {
 		},
 	}
 
-	evaluator := policy.NewEvaluator(pol)
+	evaluator := policy.NewEvaluator(pol, "")
 	var materials []aflock.MaterialClassification
 
 	// Sequence: read -> bash(tweet) should be blocked

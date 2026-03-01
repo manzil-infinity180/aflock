@@ -75,7 +75,7 @@ func TestSecurity_R3_230_AllowListIgnoresCommandPattern(t *testing.T) {
 					Allow: tt.allowList,
 				},
 			}
-			e := NewEvaluator(policy)
+			e := NewEvaluator(policy, "")
 
 			var input json.RawMessage
 			if tt.toolName == "Bash" {
@@ -146,7 +146,7 @@ func TestSecurity_R3_231_ProtocolRelativeURLDomainBypass(t *testing.T) {
 				Deny: []string{"evil.com"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		input := json.RawMessage(`{"url": "//evil.com/steal-data"}`)
 		decision, reason := e.EvaluatePreToolUse("WebFetch", input)
 
@@ -208,7 +208,7 @@ func TestSecurity_R3_232_GlobGrepFileInputMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(policy)
+			e := NewEvaluator(policy, "")
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, json.RawMessage(tt.toolInput))
 
 			if decision != tt.wantDecision {
@@ -279,7 +279,7 @@ func TestSecurity_R3_234_CheckLimitsExactValueNotExceeded(t *testing.T) {
 		},
 	}
 
-	e := NewEvaluator(policy)
+	e := NewEvaluator(policy, "")
 
 	// Test exact boundary
 	metrics := &aflock.SessionMetrics{
@@ -329,7 +329,7 @@ func TestSecurity_R3_235_DataFlowBashReadBypass(t *testing.T) {
 		},
 	}
 
-	e := NewEvaluator(policy)
+	e := NewEvaluator(policy, "")
 
 	// Step 1: Use Bash to cat a secret file
 	catInput := json.RawMessage(`{"command": "cat /home/user/.ssh/id_rsa"}`)
@@ -381,7 +381,7 @@ func TestSecurity_R3_236_DomainCaseSensitivity(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(policy)
+			e := NewEvaluator(policy, "")
 			input := json.RawMessage(`{"url": "` + tt.url + `"}`)
 			decision, reason := e.EvaluatePreToolUse("WebFetch", input)
 
@@ -419,7 +419,7 @@ func TestSecurity_R3_237_FilePathTraversalInDenyBypass(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(policy)
+			e := NewEvaluator(policy, "")
 			input := json.RawMessage(`{"file_path": "` + tt.filePath + `"}`)
 			decision, reason := e.EvaluatePreToolUse("Read", input)
 
@@ -454,7 +454,7 @@ func TestSecurity_R3_238_NotebookEditNotFileOperation(t *testing.T) {
 				Deny: []string{"**/secret*"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		input := json.RawMessage(`{"notebook_path": "/data/secret-analysis.ipynb"}`)
 		decision, _ := e.EvaluatePreToolUse("NotebookEdit", input)
 
@@ -476,7 +476,7 @@ func TestSecurity_R3_239_DenyPatternOrderMatters(t *testing.T) {
 		},
 	}
 
-	e := NewEvaluator(policy)
+	e := NewEvaluator(policy, "")
 
 	// Both patterns should match, first one wins in the reason message
 	input := json.RawMessage(`{"command": "git push --force origin main"}`)
@@ -513,7 +513,7 @@ func TestSecurity_R3_240_EmptyDomainDeniedCorrectly(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(policy)
+			e := NewEvaluator(policy, "")
 			decision, reason := e.EvaluatePreToolUse("WebFetch", json.RawMessage(tt.input))
 			if decision != aflock.DecisionDeny {
 				t.Errorf("expected deny for %s, got %v (reason: %s)", tt.name, decision, reason)
@@ -550,7 +550,7 @@ func TestSecurity_R3_270_GrepBypassesFileDenyWithRealInput(t *testing.T) {
 			Deny: []string{"/etc/**", "*.secret"},
 		},
 	}
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 
 	// Real Grep tool input format — uses "path" not "file_path"
 	grepInput := json.RawMessage(`{"pattern": "password", "path": "/etc/shadow", "output_mode": "content"}`)
@@ -580,7 +580,7 @@ func TestSecurity_R3_270_GlobBypassesFileDenyWithRealInput(t *testing.T) {
 			Deny: []string{"/etc/**"},
 		},
 	}
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 
 	// Real Glob tool input format — uses "path" not "file_path"
 	globInput := json.RawMessage(`{"pattern": "**/*.conf", "path": "/etc"}`)
@@ -619,7 +619,7 @@ func TestSecurity_R3_271_WebSearchAlwaysDeniedWithDomainPolicy(t *testing.T) {
 			Deny: []string{"evil.com"},
 		},
 	}
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 
 	// Real WebSearch tool input format — uses "query" not "url"
 	searchInput := json.RawMessage(`{"query": "golang best practices 2026"}`)
@@ -649,7 +649,7 @@ func TestSecurity_R3_271_WebSearchAlwaysDeniedWithDomainAllowList(t *testing.T) 
 			Allow: []string{"*.com", "*.org", "*.io"},
 		},
 	}
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 
 	searchInput := json.RawMessage(`{"query": "kubernetes deployment strategies"}`)
 
@@ -678,7 +678,7 @@ func TestSecurity_R3_272_GrepInputExtractionReturnsEmpty(t *testing.T) {
 			Deny:  []string{"Grep:password"},
 		},
 	}
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 
 	// Deny pattern is "Grep:password" — should deny Grep searching for "password"
 	grepInput := json.RawMessage(`{"pattern": "password", "path": "/home/user"}`)
@@ -709,7 +709,7 @@ func TestSecurity_R3_272_WebSearchInputExtractionReturnsEmpty(t *testing.T) {
 			Deny:  []string{"WebSearch:competitor*"},
 		},
 	}
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 
 	searchInput := json.RawMessage(`{"query": "competitor analysis market share"}`)
 
@@ -730,7 +730,7 @@ func TestSecurity_R3_272_WebSearchInputExtractionReturnsEmpty(t *testing.T) {
 			Deny:  []string{"WebSearch:exact query"},
 		},
 	}
-	eval2 := NewEvaluator(policy2)
+	eval2 := NewEvaluator(policy2, "")
 	searchInput2 := json.RawMessage(`{"query": "exact query"}`)
 	decision2, _ := eval2.EvaluatePreToolUse("WebSearch", searchInput2)
 	if decision2 != aflock.DecisionDeny {

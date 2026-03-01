@@ -66,7 +66,7 @@ func FuzzEvaluatePreToolUse(f *testing.F) {
 		},
 	}
 
-	e := NewEvaluator(policy)
+	e := NewEvaluator(policy, "")
 
 	f.Fuzz(func(t *testing.T, toolName string, toolInput string) {
 		// Must not panic — that is the primary invariant
@@ -141,7 +141,7 @@ func FuzzEvaluateDataFlow(f *testing.F) {
 		},
 	}
 
-	e := NewEvaluator(policy)
+	e := NewEvaluator(policy, "")
 
 	f.Fuzz(func(t *testing.T, toolName string, toolInput string, materialLabel string) {
 		// Build materials from fuzz input

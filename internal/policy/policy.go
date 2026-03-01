@@ -19,6 +19,15 @@ var DefaultPolicyNames = []string{
 
 // Load loads a policy from the specified path or searches for one in the directory.
 func Load(path string) (*aflock.Policy, string, error) {
+	// Resolve relative paths to absolute
+	if !filepath.IsAbs(path) {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return nil, "", fmt.Errorf("resolve path: %w", err)
+		}
+		path = absPath
+	}
+
 	// If path is a directory, search for policy files
 	info, err := os.Stat(path) //nolint:gosec // G703: path traversal taint from CLI config, not user-controlled
 	if err != nil {

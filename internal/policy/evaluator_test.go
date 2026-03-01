@@ -100,7 +100,7 @@ func TestEvaluatePreToolUse_DenyList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, json.RawMessage(tt.toolInput))
 
 			if decision != tt.wantDecision {
@@ -209,7 +209,7 @@ func TestEvaluatePreToolUse_AllowList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, json.RawMessage(tt.toolInput))
 
 			if decision != tt.wantDecision {
@@ -301,7 +301,7 @@ func TestEvaluatePreToolUse_RequireApproval(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, json.RawMessage(tt.toolInput))
 
 			if decision != tt.wantDecision {
@@ -496,7 +496,7 @@ func TestEvaluateFileAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			// Use the correct JSON field name per tool type:
 			// Grep/Glob use "path", NotebookEdit uses "notebook_path", others use "file_path"
 			var input json.RawMessage
@@ -662,7 +662,7 @@ func TestEvaluateDomainAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			input := json.RawMessage(`{"url": "` + tt.url + `"}`)
 			decision, reason := e.EvaluatePreToolUse(tt.toolName, input)
 
@@ -907,7 +907,7 @@ func TestEvaluateDataFlow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			decision, reason, newMaterial := e.EvaluateDataFlow(tt.toolName, json.RawMessage(tt.toolInput), tt.materials)
 
 			if decision != tt.wantDecision {
@@ -960,7 +960,7 @@ func TestEvaluateDataFlow_ExfilPrevention(t *testing.T) {
 		},
 	}
 
-	e := NewEvaluator(policy)
+	e := NewEvaluator(policy, "")
 
 	// Step 1: Read bank account data - should classify as financial
 	readInput := json.RawMessage(`{"file_path": "/Users/test/private-data/bank-account.csv"}`)
@@ -1201,7 +1201,7 @@ func TestCheckLimits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			exceeded, limitName, msg := e.CheckLimits(tt.metrics, tt.enforcement)
 
 			if exceeded != tt.wantExceed {
@@ -1232,7 +1232,7 @@ func TestFailClosed_MalformedJSON(t *testing.T) {
 				Allow: []string{"**/*"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		// Malformed JSON: missing closing brace
 		decision, reason := e.EvaluatePreToolUse("Read", json.RawMessage(`{invalid json`))
 		if decision != aflock.DecisionDeny {
@@ -1250,7 +1250,7 @@ func TestFailClosed_MalformedJSON(t *testing.T) {
 				Allow: []string{"*"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		decision, reason := e.EvaluatePreToolUse("WebFetch", json.RawMessage(`not json at all`))
 		if decision != aflock.DecisionDeny {
 			t.Errorf("expected Deny for malformed JSON, got %v (reason: %s)", decision, reason)
@@ -1267,7 +1267,7 @@ func TestFailClosed_MalformedJSON(t *testing.T) {
 				Allow: []string{"src/**"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		// Empty file_path will not match allow patterns
 		decision, _ := e.EvaluatePreToolUse("Read", json.RawMessage(`{}`))
 		if decision != aflock.DecisionDeny {
@@ -1282,7 +1282,7 @@ func TestFailClosed_MalformedJSON(t *testing.T) {
 				Allow: []string{"github.com"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		// Empty URL will extract to empty domain -> "empty domain" deny
 		decision, reason := e.EvaluatePreToolUse("WebFetch", json.RawMessage(`{}`))
 		if decision != aflock.DecisionDeny {
@@ -1298,7 +1298,7 @@ func TestFailClosed_MalformedJSON(t *testing.T) {
 func TestEdgeCases_NilPolicySections(t *testing.T) {
 	t.Run("nil tools policy allows everything", func(t *testing.T) {
 		policy := &aflock.Policy{}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		decision, _ := e.EvaluatePreToolUse("AnyTool", json.RawMessage(`{}`))
 		if decision != aflock.DecisionAllow {
 			t.Errorf("expected Allow with nil tools policy, got %v", decision)
@@ -1311,7 +1311,7 @@ func TestEdgeCases_NilPolicySections(t *testing.T) {
 				Deny: []string{"**/.env"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		decision, reason := e.EvaluatePreToolUse("Read", json.RawMessage(`{"file_path": ".env"}`))
 		if decision != aflock.DecisionDeny {
 			t.Errorf("expected Deny for .env file, got %v (reason: %s)", decision, reason)
@@ -1324,7 +1324,7 @@ func TestEdgeCases_NilPolicySections(t *testing.T) {
 				Deny: []string{"evil.com"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		decision, reason := e.EvaluatePreToolUse("WebFetch", json.RawMessage(`{"url": "https://evil.com/data"}`))
 		if decision != aflock.DecisionDeny {
 			t.Errorf("expected Deny for evil.com, got %v (reason: %s)", decision, reason)
@@ -1340,7 +1340,7 @@ func TestEdgeCases_NilPolicySections(t *testing.T) {
 				Deny: []string{"*"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		// "Task" is not a file operation or network operation
 		decision, _ := e.EvaluatePreToolUse("Task", json.RawMessage(`{"prompt": "test"}`))
 		if decision != aflock.DecisionAllow {
@@ -1350,7 +1350,7 @@ func TestEdgeCases_NilPolicySections(t *testing.T) {
 
 	t.Run("completely empty policy allows everything", func(t *testing.T) {
 		policy := &aflock.Policy{}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 
 		decision, _ := e.EvaluatePreToolUse("Bash", json.RawMessage(`{"command": "rm -rf /"}`))
 		if decision != aflock.DecisionAllow {
@@ -1455,7 +1455,7 @@ func TestIsNetworkOperation(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestExtractInputForMatching(t *testing.T) {
-	e := NewEvaluator(&aflock.Policy{})
+	e := NewEvaluator(&aflock.Policy{}, "")
 
 	tests := []struct {
 		name     string
@@ -1551,7 +1551,7 @@ func TestEvaluationOrder(t *testing.T) {
 				RequireApproval: []string{"Bash:rm *"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		decision, reason := e.EvaluatePreToolUse("Bash", json.RawMessage(`{"command": "rm -rf /"}`))
 		if decision != aflock.DecisionDeny {
 			t.Errorf("expected deny to take priority over requireApproval, got %v (reason: %s)", decision, reason)
@@ -1567,7 +1567,7 @@ func TestEvaluationOrder(t *testing.T) {
 				Allow: []string{"**/*"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		decision, reason := e.EvaluatePreToolUse("Write", json.RawMessage(`{"file_path": "test.txt"}`))
 		if decision != aflock.DecisionAsk {
 			t.Errorf("expected requireApproval before file access check, got %v (reason: %s)", decision, reason)
@@ -1583,7 +1583,7 @@ func TestEvaluationOrder(t *testing.T) {
 				Deny: []string{"**/.secret"},
 			},
 		}
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		decision, reason := e.EvaluatePreToolUse("Read", json.RawMessage(`{"file_path": ".secret"}`))
 		if decision != aflock.DecisionDeny {
 			t.Errorf("expected file deny to block before allow list passes, got %v (reason: %s)", decision, reason)
@@ -1643,7 +1643,7 @@ func TestSecurity_R3_122_DomainBypassViaUserinfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(policy)
+			e := NewEvaluator(policy, "")
 			input := json.RawMessage(`{"url": "` + tt.url + `"}`)
 			decision, reason := e.EvaluatePreToolUse("WebFetch", input)
 			if decision != tt.wantDecision {
@@ -1757,7 +1757,7 @@ func TestSecurity_R3_125_WebSearchAlwaysDeniedWithDomainPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := NewEvaluator(tt.policy)
+			e := NewEvaluator(tt.policy, "")
 			decision, reason := e.EvaluatePreToolUse("WebSearch", json.RawMessage(tt.toolInput))
 
 			if decision != tt.wantDecision {
@@ -1793,7 +1793,7 @@ func TestSecurity_R3_126_WebSearchDataFlowBypass(t *testing.T) {
 	})
 
 	t.Run("extractInputForMatching should handle WebSearch query", func(t *testing.T) {
-		e := NewEvaluator(&aflock.Policy{})
+		e := NewEvaluator(&aflock.Policy{}, "")
 		got := e.extractInputForMatching("WebSearch", json.RawMessage(`{"query": "sensitive financial data"}`))
 		if got == "" {
 			t.Errorf("SECURITY BUG R3-126: extractInputForMatching(\"WebSearch\", ...) returns empty string. " +
@@ -1813,7 +1813,7 @@ func TestSecurity_R3_126_WebSearchDataFlowBypass(t *testing.T) {
 			},
 		}
 
-		e := NewEvaluator(policy)
+		e := NewEvaluator(policy, "")
 		decision, _, newMaterial := e.EvaluateDataFlow(
 			"WebSearch",
 			json.RawMessage(`{"query": "search for confidential documents"}`),
@@ -1910,7 +1910,7 @@ func TestSecurity_R3_127_RegexSubstringMatchInToolPattern(t *testing.T) {
 					Deny:  []string{tt.denyPattern},
 				},
 			}
-			e := NewEvaluator(policy)
+			e := NewEvaluator(policy, "")
 			input := json.RawMessage(`{"command": "` + tt.command + `"}`)
 			decision, reason := e.EvaluatePreToolUse("Bash", input)
 
@@ -1932,7 +1932,7 @@ func TestSecurity_R3_128_RequireApprovalRegexSubstring(t *testing.T) {
 			RequireApproval: []string{"Bash:sudo"},
 		},
 	}
-	e := NewEvaluator(policy)
+	e := NewEvaluator(policy, "")
 
 	// "pseudo" contains "sudo" as a regex substring
 	input := json.RawMessage(`{"command": "echo pseudo-random"}`)

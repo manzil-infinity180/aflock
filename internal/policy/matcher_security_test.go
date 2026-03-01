@@ -101,7 +101,7 @@ func TestSecurity_R3_241_AllowListRegexAlternationFixed(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 
 	// The intended command "git log|cat /etc/shadow" should be allowed (glob literal match)
 	intendedInput, _ := json.Marshal(aflock.BashToolInput{Command: "git log|cat /etc/shadow"})
@@ -257,7 +257,7 @@ func TestSecurity_R3_244_GlobCompileFailureSilentDenyBypass(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 	input, _ := json.Marshal(aflock.BashToolInput{Command: "rm -rf /"})
 	decision, _ := eval.EvaluatePreToolUse("Bash", input)
 
@@ -360,7 +360,7 @@ func TestSecurity_R3_241_DenyListNoLongerWidenedByRegex(t *testing.T) {
 		},
 	}
 
-	eval := NewEvaluator(policy)
+	eval := NewEvaluator(policy, "")
 
 	// "rm tmp.bak" should be denied (exact glob match)
 	exactInput, _ := json.Marshal(aflock.BashToolInput{Command: "rm tmp.bak"})

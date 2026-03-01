@@ -202,8 +202,18 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 
 	// If no session state, try to load policy directly (for when SessionStart wasn't run)
 	if sessionState == nil || sessionState.Policy == nil {
-		pol, policyPath, err := policy.Load(input.Cwd)
-		if err != nil {
+		var pol *aflock.Policy
+		var policyPath string
+		var loadErr error
+
+		// First try AFLOCK_POLICY env var (same as SessionStart)
+		if envPolicy := os.Getenv("AFLOCK_POLICY"); envPolicy != "" {
+			pol, policyPath, loadErr = policy.Load(envPolicy)
+		} else {
+			pol, policyPath, loadErr = policy.Load(input.Cwd)
+		}
+
+		if loadErr != nil {
 			// No policy found - allow everything
 			return output.Write(output.PreToolUseAllow())
 		}
@@ -212,7 +222,23 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 	}
 
 	pol := sessionState.Policy
-	evaluator := policy.NewEvaluator(pol)
+	// Use cwd as projectRoot when policy path is outside cwd (e.g., AFLOCK_POLICY env var
+	// pointing to a tenant-specific policy in a subdirectory). Otherwise use the policy
+	// file's directory (standard case where .aflock is at project root).
+	projectRoot := filepath.Dir(sessionState.PolicyPath)
+	if input.Cwd != "" {
+		absCwd, _ := filepath.Abs(input.Cwd)
+		absPolicyDir, _ := filepath.Abs(projectRoot)
+		// If the policy dir is inside the cwd, patterns are likely relative to cwd
+		if absCwd != absPolicyDir {
+			relPolicyDir, err := filepath.Rel(absCwd, absPolicyDir)
+			if err == nil && !filepath.IsAbs(relPolicyDir) && relPolicyDir != "." {
+				// Policy is in a subdirectory — use cwd as project root
+				projectRoot = absCwd
+			}
+		}
+	}
+	evaluator := policy.NewEvaluator(pol, projectRoot)
 
 	// First evaluate tool/file access
 	decision, reason := evaluator.EvaluatePreToolUse(input.ToolName, input.ToolInput)
@@ -246,12 +272,10 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 		output.ExitWithWarning(fmt.Sprintf("Failed to save session state: %v", err))
 	}
 
-	// Return decision
+	// Return decision as proper JSON response
 	switch decision {
 	case aflock.DecisionDeny:
-		// Exit with code 2 to block and provide feedback
-		output.ExitWithError(fmt.Sprintf("[aflock] BLOCKED: %s", reason))
-		return nil
+		return output.Write(output.PreToolUseDeny(fmt.Sprintf("[aflock] BLOCKED: %s", reason)))
 	case aflock.DecisionAsk:
 		return output.Write(output.PreToolUseAsk(reason))
 	default:
@@ -291,7 +315,7 @@ func (h *Handler) handlePostToolUse(input *aflock.HookInput) error {
 
 	// Check fail-fast limits after tool execution
 	if sessionState.Policy != nil && sessionState.Policy.Limits != nil {
-		evaluator := policy.NewEvaluator(sessionState.Policy)
+		evaluator := policy.NewEvaluator(sessionState.Policy, filepath.Dir(sessionState.PolicyPath))
 		exceeded, limitName, msg := evaluator.CheckLimits(sessionState.Metrics, "fail-fast")
 		if exceeded {
 			return output.Write(output.PostToolUseBlock(
@@ -390,7 +414,7 @@ func (h *Handler) handleSessionEnd(input *aflock.HookInput) error {
 
 	// Check post-hoc limits
 	if sessionState.Policy.Limits != nil {
-		evaluator := policy.NewEvaluator(sessionState.Policy)
+		evaluator := policy.NewEvaluator(sessionState.Policy, filepath.Dir(sessionState.PolicyPath))
 		exceeded, limitName, msg := evaluator.CheckLimits(sessionState.Metrics, "post-hoc")
 		if exceeded {
 			// Log warning but don't block session end
