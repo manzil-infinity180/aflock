@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -28,6 +29,10 @@ type Server struct {
 	policyPath    string
 	agentIdentity *identity.AgentIdentity
 	sessionID     string
+
+	// In-memory data flow tracking (thread-safe for concurrent MCP requests)
+	mu        sync.Mutex
+	materials []aflock.MaterialClassification
 }
 
 // NewServer creates a new aflock MCP server.
@@ -249,6 +254,15 @@ func (s *Server) handleBash(ctx context.Context, request mcp.CallToolRequest) (*
 		if decision == aflock.DecisionAsk {
 			return mcp.NewToolResultError(fmt.Sprintf("Policy requires approval: %s", reason)), nil
 		}
+
+		// Evaluate data flow — Bash is a write operation, check flow rules
+		s.mu.Lock()
+		flowDecision, flowReason, _ := evaluator.EvaluateDataFlow("Bash", inputJSON, s.materials)
+		s.mu.Unlock()
+		if flowDecision == aflock.DecisionDeny {
+			s.recordAction("Bash", "deny", flowReason)
+			return mcp.NewToolResultError(fmt.Sprintf("Data flow violation: %s", flowReason)), nil
+		}
 	}
 
 	// Execute command
@@ -294,6 +308,20 @@ func (s *Server) handleReadFile(ctx context.Context, request mcp.CallToolRequest
 			s.recordAction("Read", "deny", reason)
 			return mcp.NewToolResultError(fmt.Sprintf("Policy denied: %s", reason)), nil
 		}
+
+		// Evaluate data flow — track material classification from this read
+		s.mu.Lock()
+		_, _, newMaterial := evaluator.EvaluateDataFlow("Read", inputJSON, s.materials)
+		if newMaterial != nil {
+			newMaterial.Timestamp = time.Now()
+			s.materials = append(s.materials, *newMaterial)
+			// Also persist to session state
+			if sessionState, _ := s.stateManager.Load(s.sessionID); sessionState != nil {
+				sessionState.Materials = s.materials
+				s.stateManager.Save(sessionState)
+			}
+		}
+		s.mu.Unlock()
 	}
 
 	// Read file
@@ -329,6 +357,15 @@ func (s *Server) handleWriteFile(ctx context.Context, request mcp.CallToolReques
 		if decision == aflock.DecisionDeny {
 			s.recordAction("Write", "deny", reason)
 			return mcp.NewToolResultError(fmt.Sprintf("Policy denied: %s", reason)), nil
+		}
+
+		// Evaluate data flow — check if writing here violates flow rules
+		s.mu.Lock()
+		flowDecision, flowReason, _ := evaluator.EvaluateDataFlow("Write", inputJSON, s.materials)
+		s.mu.Unlock()
+		if flowDecision == aflock.DecisionDeny {
+			s.recordAction("Write", "deny", flowReason)
+			return mcp.NewToolResultError(fmt.Sprintf("Data flow violation: %s", flowReason)), nil
 		}
 	}
 
