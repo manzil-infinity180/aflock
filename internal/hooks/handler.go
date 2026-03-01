@@ -182,8 +182,18 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 
 	// If no session state, try to load policy directly (for when SessionStart wasn't run)
 	if sessionState == nil || sessionState.Policy == nil {
-		pol, policyPath, err := policy.Load(input.Cwd)
-		if err != nil {
+		var pol *aflock.Policy
+		var policyPath string
+		var loadErr error
+
+		// First try AFLOCK_POLICY env var (same as SessionStart)
+		if envPolicy := os.Getenv("AFLOCK_POLICY"); envPolicy != "" {
+			pol, policyPath, loadErr = policy.Load(envPolicy)
+		} else {
+			pol, policyPath, loadErr = policy.Load(input.Cwd)
+		}
+
+		if loadErr != nil {
 			// No policy found - allow everything
 			return output.Write(output.PreToolUseAllow())
 		}
@@ -192,7 +202,22 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 	}
 
 	pol := sessionState.Policy
+	// Use cwd as projectRoot when policy path is outside cwd (e.g., AFLOCK_POLICY env var
+	// pointing to a tenant-specific policy in a subdirectory). Otherwise use the policy
+	// file's directory (standard case where .aflock is at project root).
 	projectRoot := filepath.Dir(sessionState.PolicyPath)
+	if input.Cwd != "" {
+		absCwd, _ := filepath.Abs(input.Cwd)
+		absPolicyDir, _ := filepath.Abs(projectRoot)
+		// If the policy dir is inside the cwd, patterns are likely relative to cwd
+		if absCwd != absPolicyDir {
+			relPolicyDir, err := filepath.Rel(absCwd, absPolicyDir)
+			if err == nil && !filepath.IsAbs(relPolicyDir) && relPolicyDir != "." {
+				// Policy is in a subdirectory — use cwd as project root
+				projectRoot = absCwd
+			}
+		}
+	}
 	evaluator := policy.NewEvaluator(pol, projectRoot)
 
 	// First evaluate tool/file access
