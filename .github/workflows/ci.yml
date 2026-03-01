@@ -146,11 +146,14 @@ jobs:
           echo '{"session_id":"ci-test","cwd":"/tmp/aflock-test","tool_name":"Read","tool_use_id":"t1","tool_input":{"file_path":"src/app.go"}}' | $GITHUB_WORKSPACE/bin/aflock hook PreToolUse
 
           echo "Testing PreToolUse (denied - Task)..."
-          if echo '{"session_id":"ci-test","cwd":"/tmp/aflock-test","tool_name":"Task","tool_use_id":"t2","tool_input":{}}' | $GITHUB_WORKSPACE/bin/aflock hook PreToolUse 2>&1; then
+          DENY_RESULT=$(echo '{"session_id":"ci-test","cwd":"/tmp/aflock-test","tool_name":"Task","tool_use_id":"t2","tool_input":{}}' | $GITHUB_WORKSPACE/bin/aflock hook PreToolUse 2>&1) || true
+          if echo "$DENY_RESULT" | grep -q "BLOCKED"; then
+            echo "Task correctly denied"
+          else
             echo "ERROR: Task should have been denied"
+            echo "Got: $DENY_RESULT"
             exit 1
           fi
-          echo "Task correctly denied"
 
           echo "Testing verify..."
           $GITHUB_WORKSPACE/bin/aflock verify --policy .aflock
