@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 920" width="800" height="920" font-family="system-ui, sans-serif">
+  <defs>
+    <marker id="arrowDown" markerWidth="10" markerHeight="10" refX="5" refY="10" orient="auto">
+      <path d="M0,0 L5,10 L10,0" fill="#6366f1"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="920" rx="12" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="400" y="40" text-anchor="middle" font-size="22" font-weight="700" fill="#1e1e1e">aflock Architecture Overview</text>
+  <text x="400" y="62" text-anchor="middle" font-size="13" fill="#6366f1" font-weight="500">Policy  --  Execution  --  Verification</text>
+
+  <!-- ============================== -->
+  <!-- SECTION 1: .aflock (Signed Policy) -->
+  <!-- ============================== -->
+  <rect x="40" y="85" width="720" height="260" rx="10" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow)"/>
+
+  <!-- Section 1 header bar -->
+  <rect x="40" y="85" width="720" height="44" rx="10" fill="#6366f1"/>
+  <rect x="40" y="105" width="720" height="24" fill="#6366f1"/>
+  <text x="400" y="113" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">.aflock  (Signed Policy)</text>
+
+  <!-- Limits box -->
+  <rect x="68" y="148" width="204" height="178" rx="8" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <rect x="68" y="148" width="204" height="36" rx="8" fill="#818cf8"/>
+  <rect x="68" y="170" width="204" height="14" fill="#818cf8"/>
+  <text x="170" y="172" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">Limits</text>
+
+  <text x="86" y="210" font-size="12" fill="#1e1e1e">maxSpend</text>
+  <text x="86" y="232" font-size="12" fill="#1e1e1e">maxTokens</text>
+  <text x="86" y="254" font-size="12" fill="#1e1e1e">maxTurns</text>
+  <text x="86" y="276" font-size="12" fill="#1e1e1e">maxTime</text>
+
+  <circle cx="80" cy="206" r="3" fill="#6366f1"/>
+  <circle cx="80" cy="228" r="3" fill="#6366f1"/>
+  <circle cx="80" cy="250" r="3" fill="#6366f1"/>
+  <circle cx="80" cy="272" r="3" fill="#6366f1"/>
+
+  <!-- Allowlists box -->
+  <rect x="298" y="148" width="204" height="178" rx="8" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <rect x="298" y="148" width="204" height="36" rx="8" fill="#818cf8"/>
+  <rect x="298" y="170" width="204" height="14" fill="#818cf8"/>
+  <text x="400" y="172" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">Allowlists</text>
+
+  <text x="316" y="210" font-size="12" fill="#1e1e1e">models</text>
+  <text x="316" y="232" font-size="12" fill="#1e1e1e">tools</text>
+  <text x="316" y="254" font-size="12" fill="#1e1e1e">files</text>
+  <text x="316" y="276" font-size="12" fill="#1e1e1e">domains</text>
+
+  <circle cx="310" cy="206" r="3" fill="#6366f1"/>
+  <circle cx="310" cy="228" r="3" fill="#6366f1"/>
+  <circle cx="310" cy="250" r="3" fill="#6366f1"/>
+  <circle cx="310" cy="272" r="3" fill="#6366f1"/>
+
+  <!-- Evaluators box -->
+  <rect x="528" y="148" width="204" height="178" rx="8" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <rect x="528" y="148" width="204" height="36" rx="8" fill="#818cf8"/>
+  <rect x="528" y="170" width="204" height="14" fill="#818cf8"/>
+  <text x="630" y="172" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff">Evaluators</text>
+
+  <text x="546" y="210" font-size="12" fill="#1e1e1e">Rego metrics</text>
+  <text x="546" y="232" font-size="12" fill="#1e1e1e">AI quality</text>
+  <text x="546" y="254" font-size="12" fill="#1e1e1e">gRPC custom</text>
+
+  <circle cx="540" cy="206" r="3" fill="#6366f1"/>
+  <circle cx="540" cy="228" r="3" fill="#6366f1"/>
+  <circle cx="540" cy="250" r="3" fill="#6366f1"/>
+
+  <!-- ============================== -->
+  <!-- Arrow 1: Section 1 → Section 2 -->
+  <!-- ============================== -->
+  <line x1="400" y1="345" x2="400" y2="390" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <text x="400" y="376" text-anchor="middle" font-size="20" fill="#6366f1">&#9660;</text>
+
+  <!-- ============================== -->
+  <!-- SECTION 2: Agent Execution -->
+  <!-- ============================== -->
+  <rect x="40" y="400" width="720" height="230" rx="10" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow)"/>
+
+  <!-- Section 2 header bar -->
+  <rect x="40" y="400" width="720" height="44" rx="10" fill="#6366f1"/>
+  <rect x="40" y="420" width="720" height="24" fill="#6366f1"/>
+  <text x="400" y="428" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Agent Execution</text>
+
+  <!-- Turn boxes -->
+  <!-- Turn 1 -->
+  <rect x="68" y="464" width="132" height="64" rx="8" fill="#ffffff" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="134" y="492" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">Turn 1</text>
+  <text x="134" y="512" text-anchor="middle" font-size="10" fill="#6366f1" font-weight="500">(attest)</text>
+
+  <!-- Arrow Turn 1 → Turn 2 -->
+  <line x1="200" y1="496" x2="230" y2="496" stroke="#818cf8" stroke-width="1.5"/>
+  <polygon points="228,491 238,496 228,501" fill="#818cf8"/>
+
+  <!-- Turn 2 -->
+  <rect x="240" y="464" width="132" height="64" rx="8" fill="#ffffff" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="306" y="492" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">Turn 2</text>
+  <text x="306" y="512" text-anchor="middle" font-size="10" fill="#6366f1" font-weight="500">(attest)</text>
+
+  <!-- Arrow Turn 2 → Turn 3 -->
+  <line x1="372" y1="496" x2="402" y2="496" stroke="#818cf8" stroke-width="1.5"/>
+  <polygon points="400,491 410,496 400,501" fill="#818cf8"/>
+
+  <!-- Turn 3 -->
+  <rect x="412" y="464" width="132" height="64" rx="8" fill="#ffffff" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="478" y="492" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">Turn 3</text>
+  <text x="478" y="512" text-anchor="middle" font-size="10" fill="#6366f1" font-weight="500">(attest)</text>
+
+  <!-- Arrow Turn 3 → Turn N -->
+  <line x1="544" y1="496" x2="556" y2="496" stroke="#818cf8" stroke-width="1.5" stroke-dasharray="3,3"/>
+  <text x="572" y="500" font-size="14" fill="#818cf8" font-weight="500">...</text>
+  <line x1="588" y1="496" x2="600" y2="496" stroke="#818cf8" stroke-width="1.5" stroke-dasharray="3,3"/>
+
+  <!-- Turn N -->
+  <rect x="600" y="464" width="132" height="64" rx="8" fill="#ffffff" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="666" y="492" text-anchor="middle" font-size="13" font-weight="600" fill="#1e1e1e">Turn N</text>
+  <text x="666" y="512" text-anchor="middle" font-size="10" fill="#6366f1" font-weight="500">(attest)</text>
+
+  <!-- Cross-Step Access bar -->
+  <rect x="68" y="548" width="664" height="40" rx="8" fill="#ffffff" stroke="#c7d2fe" stroke-width="1" stroke-dasharray="6,3"/>
+  <text x="400" y="573" text-anchor="middle" font-size="12" font-weight="600" fill="#6366f1">Cross-Step Access (cumulative sums)</text>
+
+  <!-- Tiny connecting lines from turns down to the bar -->
+  <line x1="134" y1="528" x2="134" y2="548" stroke="#c7d2fe" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="306" y1="528" x2="306" y2="548" stroke="#c7d2fe" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="478" y1="528" x2="478" y2="548" stroke="#c7d2fe" stroke-width="1" stroke-dasharray="3,2"/>
+  <line x1="666" y1="528" x2="666" y2="548" stroke="#c7d2fe" stroke-width="1" stroke-dasharray="3,2"/>
+
+  <!-- ============================== -->
+  <!-- Arrow 2: Section 2 → Section 3 -->
+  <!-- ============================== -->
+  <line x1="400" y1="630" x2="400" y2="675" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <text x="400" y="661" text-anchor="middle" font-size="20" fill="#6366f1">&#9660;</text>
+
+  <!-- ============================== -->
+  <!-- SECTION 3: Verification -->
+  <!-- ============================== -->
+  <rect x="40" y="685" width="720" height="216" rx="10" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow)"/>
+
+  <!-- Section 3 header bar -->
+  <rect x="40" y="685" width="720" height="44" rx="10" fill="#6366f1"/>
+  <rect x="40" y="705" width="720" height="24" fill="#6366f1"/>
+  <text x="400" y="713" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">Verification</text>
+
+  <!-- Verification items -->
+  <!-- Item 1 -->
+  <rect x="68" y="748" width="16" height="16" rx="3" fill="#818cf8"/>
+  <text x="76" y="760" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="700">&#10003;</text>
+  <text x="96" y="761" font-size="13" fill="#1e1e1e">Sum tokens across all turn attestations</text>
+
+  <!-- Item 2 -->
+  <rect x="68" y="778" width="16" height="16" rx="3" fill="#818cf8"/>
+  <text x="76" y="790" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="700">&#10003;</text>
+  <text x="96" y="791" font-size="13" fill="#1e1e1e">Sum cost across all turn attestations</text>
+
+  <!-- Item 3 -->
+  <rect x="68" y="808" width="16" height="16" rx="3" fill="#818cf8"/>
+  <text x="76" y="820" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="700">&#10003;</text>
+  <text x="96" y="821" font-size="13" fill="#1e1e1e">Verify cumulative limits not exceeded</text>
+
+  <!-- Item 4 -->
+  <rect x="68" y="838" width="16" height="16" rx="3" fill="#818cf8"/>
+  <text x="76" y="850" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="700">&#10003;</text>
+  <text x="96" y="851" font-size="13" fill="#1e1e1e">Verify tool / file / domain allowlists respected</text>
+
+  <!-- Item 5 -->
+  <rect x="68" y="868" width="16" height="16" rx="3" fill="#818cf8"/>
+  <text x="76" y="880" text-anchor="middle" font-size="10" fill="#ffffff" font-weight="700">&#10003;</text>
+  <text x="96" y="881" font-size="13" fill="#1e1e1e">Run AI evaluators on final output quality</text>
+</svg>

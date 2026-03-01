@@ -1,3 +1,8 @@
+---
+sidebar_position: 3
+title: Specification
+---
+
 # AgentFlow Lock (`.aflock`) Specification
 
 **Version:** 1.0
@@ -12,42 +17,7 @@ An `.aflock` file is a **cryptographically signed policy** that constrains AI ag
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    .aflock (Signed Policy)                      │
-│  ┌───────────────┐  ┌───────────────┐  ┌───────────────────┐   │
-│  │   Limits      │  │   Allowlists  │  │   Evaluators      │   │
-│  │ - maxSpend    │  │ - models      │  │ - Rego (metrics)  │   │
-│  │ - maxTokens   │  │ - tools       │  │ - AI (quality)    │   │
-│  │ - maxTurns    │  │ - files       │  │ - gRPC (custom)   │   │
-│  │ - maxTime     │  │ - domains     │  │                   │   │
-│  └───────────────┘  └───────────────┘  └───────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Agent Execution                              │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐      │
-│  │ Turn 1  │───▶│ Turn 2  │───▶│ Turn 3  │───▶│ Turn N  │      │
-│  │ attest  │    │ attest  │    │ attest  │    │ attest  │      │
-│  └─────────┘    └─────────┘    └─────────┘    └─────────┘      │
-│       │              │              │              │            │
-│       └──────────────┴──────────────┴──────────────┘            │
-│                              │                                  │
-│                    Cross-Step Access                            │
-│                    (cumulative sums)                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Verification                                 │
-│  - Sum tokens across all turn attestations                      │
-│  - Sum cost across all turn attestations                        │
-│  - Verify cumulative limits not exceeded                        │
-│  - Verify tool/file/domain allowlists respected                 │
-│  - Run AI evaluators on final output quality                    │
-└─────────────────────────────────────────────────────────────────┘
-```
+![Architecture Overview](/img/diagrams/architecture-overview.svg)
 
 ## Design Principles
 
@@ -107,38 +77,7 @@ This produces a deterministic identity that:
 
 Each unique agent identity maps to a cryptographic key:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Agent Identity                               │
-│  ┌─────────┐ ┌─────────────┐ ┌───────┐ ┌────────┐ ┌──────────┐ │
-│  │  Model  │+│ Environment │+│ Tools │+│ Policy │+│  Parent  │ │
-│  └────┬────┘ └──────┬──────┘ └───┬───┘ └───┬────┘ └────┬─────┘ │
-│       └─────────────┴────────────┴─────────┴───────────┘       │
-│                              │                                  │
-│                      SHA256 Hash                                │
-│                              │                                  │
-│                              ▼                                  │
-│                    Agent Identity Hash                          │
-│                    (abc123def456...)                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Key Derivation                               │
-│                                                                 │
-│  Option 1: SPIFFE/SPIRE                                         │
-│    - Workload identity → X.509 SVID                             │
-│    - Agent identity is the SPIFFE ID                            │
-│                                                                 │
-│  Option 2: Sigstore Keyless                                     │
-│    - Agent identity embedded in OIDC token claims               │
-│    - Fulcio issues short-lived cert                             │
-│                                                                 │
-│  Option 3: Derived Key                                          │
-│    - KDF(masterKey, agentIdentity) → signingKey                 │
-│    - Master key held by trusted orchestrator                    │
-└─────────────────────────────────────────────────────────────────┘
-```
+![Identity Derivation](/img/diagrams/identity-derivation.svg)
 
 #### SPIRE Agent as Reference Architecture
 
@@ -146,38 +85,7 @@ The [SPIRE Agent](https://github.com/spiffe/spire) provides a production-ready m
 
 **SPIRE Agent Architecture:**
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Workload (any process)                                         │
-│                                                                 │
-│  Connects to SPIRE Agent via Unix socket                        │
-│  Requests SVID (SPIFFE Verifiable Identity Document)            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ Workload API (gRPC over Unix socket)
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  SPIRE Agent                                                    │
-│                                                                 │
-│  1. Get PID from socket (SO_PEERCRED)                           │
-│  2. Run workload attestors:                                     │
-│     - unix: UID, GID, path                                      │
-│     - docker: container ID, image                               │
-│     - k8s: pod, namespace, service account                      │
-│  3. Match against registration entries                          │
-│  4. Issue X.509 SVID with SPIFFE ID                             │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ Node API (mTLS)
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  SPIRE Server                                                   │
-│                                                                 │
-│  - Registration entries (workload → SPIFFE ID mapping)          │
-│  - CA for signing SVIDs                                         │
-│  - Policy enforcement                                           │
-└─────────────────────────────────────────────────────────────────┘
-```
+![SPIRE Architecture Mapping](/img/diagrams/spire-architecture.svg)
 
 **Mapping SPIRE → ai-notary:**
 
@@ -262,25 +170,7 @@ type AgentIdentity struct {
 
 Agents receive a **JWT** for authentication, but attestations are signed by a **key they cannot access**. This separation is critical for security.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Agent Credential Model                                         │
-│                                                                 │
-│  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
-│  │  JWT (Agent Holds)  │    │  Signing Key (Server Holds)    │ │
-│  │                     │    │                                 │ │
-│  │  - Identity claims  │    │  - Never exposed to agent      │ │
-│  │  - Granted scopes   │    │  - Used to sign attestations   │ │
-│  │  - Expiration       │    │  - Bound to agent identity     │ │
-│  │  - Policy digest    │    │  - Rotated by server           │ │
-│  │                     │    │                                 │ │
-│  │  Agent CAN:         │    │  Agent CANNOT:                 │ │
-│  │  - Present JWT      │    │  - Access signing key          │ │
-│  │  - Request actions  │    │  - Sign own attestations       │ │
-│  │  - Prove identity   │    │  - Forge signatures            │ │
-│  └─────────────────────┘    └─────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-```
+![Credential Model](/img/diagrams/credential-model.svg)
 
 **JWT Structure:**
 
@@ -319,29 +209,7 @@ Agents receive a **JWT** for authentication, but attestations are signed by a **
 
 **Flow:**
 
-```
-Agent                              aflock Server
-  │                                     │
-  │  ──── MCP: connect ───────────────> │
-  │                                     │  PID introspection
-  │                                     │  Compute identity
-  │                                     │  Generate JWT
-  │  <─── JWT (short-lived) ─────────── │
-  │                                     │
-  │  ──── MCP: bash {cmd} + JWT ──────> │
-  │                                     │  Verify JWT
-  │                                     │  Check grants
-  │                                     │  Execute command
-  │                                     │  Create attestation
-  │                                     │  Sign with SERVER key
-  │  <─── result + signed attestation ─ │
-  │                                     │
-  │  ──── MCP: access_secret + JWT ───> │
-  │                                     │  Verify JWT
-  │                                     │  Check grants.secrets
-  │  <─── secret value ────────────────  │
-  │                                     │
-```
+![MCP Flow](/img/diagrams/mcp-flow.svg)
 
 **Why This Separation:**
 
@@ -413,96 +281,11 @@ func (s *Server) signAttestation(jwt string, attestation *intoto.Statement) (*ds
 
 The agent communicates with ai-notary via **MCP (Model Context Protocol)**. This is how identity discovery works - the MCP connection over localhost allows the signer to introspect the connecting process:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Claude Code (Agent)                                            │
-│  PID: 12345                                                     │
-│                                                                 │
-│  MCP Client ──────────────────────────────────────────────┐     │
-│    │                                                      │     │
-│    │  Tools exposed by ai-notary:                         │     │
-│    │    - bash (with attestation)                         │     │
-│    │    - sign_attestation                                │     │
-│    │    - verify_policy                                   │     │
-│    │    - get_identity                                    │     │
-│    │                                                      │     │
-└────┼──────────────────────────────────────────────────────┼─────┘
-     │                                                      │
-     │  MCP over localhost (stdio or TCP)                   │
-     │  Unix socket: ~/.ai-notary/mcp.sock                  │
-     │                                                      │
-     ▼                                                      │
-┌─────────────────────────────────────────────────────────────────┐
-│  ai-notary (MCP Server / Signer)                                │
-│                                                                 │
-│  On MCP connection:                                             │
-│  1. Get peer PID from socket:                                   │
-│     - Linux: SO_PEERCRED on Unix socket                         │
-│     - macOS: LOCAL_PEERCRED                                     │
-│     - Or: /proc/net/tcp lookup for TCP                          │
-│                                                                 │
-│  2. Introspect process:                                         │
-│     - /proc/{pid}/cmdline → binary, args                        │
-│     - /proc/{pid}/cwd → working directory                       │
-│     - /proc/{pid}/environ → env vars                            │
-│                                                                 │
-│  3. Extract identity components:                                │
-│     - Binary path → verify it's claude-code                     │
-│     - --model flag → model identity                             │
-│     - Session env → session binding                             │
-│     - .aflock in cwd → policy binding                           │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Identity Resolution                                            │
-│                                                                 │
-│  From PID 12345:                                                │
-│    cmdline: /usr/bin/claude-code --model opus ...               │
-│    cwd: /Users/dev/project                                      │
-│    env: CLAUDE_SESSION_ID=abc123                                │
-│                                                                 │
-│  Resolved Identity:                                             │
-│    model: claude-opus-4 (from --model flag)                     │
-│    environment: macos:user:dev (from UID/process)               │
-│    tools: [Read, Edit, ...] (from session config)               │
-│    sessionId: abc123 (from env var)                             │
-│    policyDigest: sha256:... (from .aflock in cwd)               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Key Assignment                                                 │
-│                                                                 │
-│  Identity hash: sha256(model||env||tools||policy||session)      │
-│                                                                 │
-│  Lookup/derive signing key for this identity                    │
-│  Return key to agent for attestation signing                    │
-└─────────────────────────────────────────────────────────────────┘
-```
+![MCP Identity Discovery](/img/diagrams/mcp-identity-discovery.svg)
 
 **MCP Tool Flow:**
 
-```
-Agent                           ai-notary MCP Server
-  │                                     │
-  │  ──── MCP: initialize ────────────> │
-  │                                     │  Get PID, introspect process
-  │                                     │  Load .aflock from agent's cwd
-  │                                     │  Compute agent identity
-  │  <─── tools: [bash, sign, ...] ──── │
-  │                                     │
-  │  ──── MCP: bash {cmd, attest} ────> │
-  │                                     │  Execute command
-  │                                     │  Capture output, exit code
-  │                                     │  Create attestation
-  │                                     │  Sign with agent's key
-  │  <─── result + attestation ──────── │
-  │                                     │
-  │  ──── MCP: get_identity ──────────> │
-  │  <─── {model, env, tools, ...} ──── │
-  │                                     │
-```
+*See the [MCP Flow diagram](#flow) above for the detailed sequence.*
 
 **Why MCP Matters:**
 
@@ -609,24 +392,7 @@ Verification checks:
 
 When a parent spawns a sub-agent, identity chains:
 
-```
-Parent Identity: sha256:aaa...
-    │
-    ├── model: claude-opus-4
-    ├── env: container:xyz
-    ├── tools: [Read, Edit, Task, ...]
-    ├── policy: sha256:parent-policy
-    └── parent: null
-         │
-         ▼ spawns
-Sub-Agent Identity: sha256:bbb...
-    │
-    ├── model: claude-sonnet-4
-    ├── env: container:xyz (inherited)
-    ├── tools: [Read, WebFetch] (subset)
-    ├── policy: sha256:sublayout-policy
-    └── parent: sha256:aaa... ◄── links to parent
-```
+![Sub-Agent Identity Chain](/img/diagrams/sub-agent-identity.svg)
 
 This creates an identity chain that can be verified:
 - Sub-agent's parent field matches parent's identity
@@ -1366,34 +1132,7 @@ Inspired by [in-toto sublayouts](https://github.com/in-toto/specification), the 
 
 When a parent agent spawns a sub-agent (via Claude Code's `Task` tool), the sub-agent can operate under its own `.aflock` policy. This creates a hierarchical verification structure:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Parent Agent Policy                          │
-│                    (parent.aflock)                              │
-│                                                                 │
-│  sublayouts: [                                                  │
-│    { name: "research", policy: "research-agent.aflock" },       │
-│    { name: "testing", policy: "test-agent.aflock" }             │
-│  ]                                                              │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-         ┌───────────────┴───────────────┐
-         │                               │
-         ▼                               ▼
-┌─────────────────────┐     ┌─────────────────────┐
-│  Research Agent     │     │  Testing Agent      │
-│  (research-agent.   │     │  (test-agent.       │
-│   aflock)           │     │   aflock)           │
-│                     │     │                     │
-│  limits:            │     │  limits:            │
-│    maxSpend: $2     │     │    maxSpend: $3     │
-│  tools:             │     │  tools:             │
-│    allow: [WebFetch]│     │    allow: [Bash]    │
-│                     │     │                     │
-│  attestations:      │     │  attestations:      │
-│    research-*       │     │    test-*           │
-└─────────────────────┘     └─────────────────────┘
-```
+![Sublayout Hierarchy](/img/diagrams/sublayout-hierarchy.svg)
 
 #### Sublayout Definition
 
@@ -1469,21 +1208,7 @@ Verification recurses into sublayouts:
 
 Sub-agent sessions create nested merkle trees:
 
-```
-Parent Session Merkle Root
-├── Turn 1 (parent)
-├── Turn 2 (parent)
-├── Sub-Agent "research" Spawn
-│   └── Research Session Merkle Root
-│       ├── Turn 1 (research)
-│       └── Turn 2 (research)
-├── Turn 3 (parent)
-├── Sub-Agent "testing" Spawn
-│   └── Testing Session Merkle Root
-│       ├── Turn 1 (testing)
-│       └── Turn 2 (testing)
-└── Turn 4 (parent)
-```
+![Session Merkle Tree](/img/diagrams/merkle-tree.svg)
 
 The parent's materialsFrom can reference sub-agent session roots:
 

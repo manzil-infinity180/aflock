@@ -29,7 +29,7 @@ func Load(path string) (*aflock.Policy, string, error) {
 	}
 
 	// If path is a directory, search for policy files
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) //nolint:gosec // G703: path traversal taint from CLI config, not user-controlled
 	if err != nil {
 		return nil, "", fmt.Errorf("stat path: %w", err)
 	}
@@ -44,7 +44,7 @@ func Load(path string) (*aflock.Policy, string, error) {
 		policyPath = path
 	}
 
-	data, err := os.ReadFile(policyPath)
+	data, err := os.ReadFile(policyPath) //nolint:gosec // G304: policy file path from CLI config
 	if err != nil {
 		return nil, "", fmt.Errorf("read policy file: %w", err)
 	}
@@ -61,7 +61,7 @@ func Load(path string) (*aflock.Policy, string, error) {
 func findPolicy(dir string) (string, error) {
 	for _, name := range DefaultPolicyNames {
 		path := filepath.Join(dir, name)
-		if _, err := os.Stat(path); err == nil {
+		if _, err := os.Stat(path); err == nil { //nolint:gosec // G703: path from CLI config
 			return path, nil
 		}
 	}

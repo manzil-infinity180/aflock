@@ -5,9 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/aflock-ai/aflock/pkg/aflock"
+)
+
+// Tool name constants to avoid repeated string literals (goconst).
+const (
+	toolWebSearch    = "WebSearch"
+	toolWebFetch     = "WebFetch"
+	toolEdit         = "Edit"
+	toolRead         = "Read"
+	toolWrite        = "Write"
+	toolGrep         = "Grep"
+	toolGlob         = "Glob"
+	toolNotebookEdit = "NotebookEdit"
 )
 
 // Evaluator evaluates policy rules against hook inputs.
@@ -29,6 +42,8 @@ func NewEvaluator(policy *aflock.Policy, projectRoot string) *Evaluator {
 }
 
 // EvaluatePreToolUse evaluates whether a tool call should be allowed.
+//
+//nolint:gocognit,gocyclo // pre-tool-use evaluation checks many conditions
 func (e *Evaluator) EvaluatePreToolUse(toolName string, toolInput json.RawMessage) (aflock.PermissionDecision, string) {
 	// Extract relevant input for pattern matching
 	inputStr := e.extractInputForMatching(toolName, toolInput)
@@ -60,7 +75,10 @@ func (e *Evaluator) EvaluatePreToolUse(toolName string, toolInput json.RawMessag
 	}
 
 	// 4. Check domain access for network tools
-	if isNetworkOperation(toolName) {
+	// WebSearch doesn't have a target URL (only a search query), so domain
+	// restrictions don't apply — the search engine itself picks which sites
+	// to query. Only WebFetch has a user-specified URL to check.
+	if isNetworkOperation(toolName) && toolName != toolWebSearch {
 		decision, reason := e.evaluateDomainAccess(toolInput)
 		if decision != aflock.DecisionAllow {
 			return decision, reason
@@ -68,11 +86,13 @@ func (e *Evaluator) EvaluatePreToolUse(toolName string, toolInput json.RawMessag
 	}
 
 	// 5. Check allow list (if specified, tool must be in it)
+	// Security (R3-230): Use MatchToolPattern to check both tool name AND command
+	// pattern. Previously only the tool name was checked, so Allow: ["Bash:git *"]
+	// would allow ALL Bash commands instead of only git commands.
 	if e.policy.Tools != nil && len(e.policy.Tools.Allow) > 0 {
 		allowed := false
 		for _, pattern := range e.policy.Tools.Allow {
-			patternTool, _, _ := ParseToolPattern(pattern)
-			if e.matcher.MatchGlob(patternTool, toolName) {
+			if e.matcher.MatchToolPattern(pattern, toolName, inputStr) {
 				allowed = true
 				break
 			}
@@ -86,6 +106,8 @@ func (e *Evaluator) EvaluatePreToolUse(toolName string, toolInput json.RawMessag
 }
 
 // extractInputForMatching extracts the relevant string from tool input for pattern matching.
+//
+//nolint:gocyclo // input extraction maps tool types to fields
 func (e *Evaluator) extractInputForMatching(toolName string, toolInput json.RawMessage) string {
 	switch toolName {
 	case "Bash":
@@ -93,12 +115,12 @@ func (e *Evaluator) extractInputForMatching(toolName string, toolInput json.RawM
 		if err := json.Unmarshal(toolInput, &input); err == nil {
 			return input.Command
 		}
-	case "Read", "Write", "Edit":
+	case toolRead, toolWrite, toolEdit:
 		var input aflock.FileToolInput
 		if err := json.Unmarshal(toolInput, &input); err == nil {
 			return input.FilePath
 		}
-	case "Glob":
+	case toolGlob:
 		var input aflock.GlobToolInput
 		if err := json.Unmarshal(toolInput, &input); err == nil {
 			if input.Path != "" {
@@ -106,53 +128,74 @@ func (e *Evaluator) extractInputForMatching(toolName string, toolInput json.RawM
 			}
 			return input.Pattern
 		}
-	case "Grep":
+	case toolGrep:
 		var input aflock.GrepToolInput
 		if err := json.Unmarshal(toolInput, &input); err == nil {
 			if input.Path != "" {
 				return input.Path
 			}
 			return input.Pattern
+		}
+	case toolNotebookEdit:
+		var input aflock.NotebookEditToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil {
+			return input.NotebookPath
 		}
 	case "Task":
 		var input aflock.TaskToolInput
 		if err := json.Unmarshal(toolInput, &input); err == nil {
 			return input.Prompt
 		}
-	case "WebFetch":
+	case toolWebFetch:
 		var input aflock.WebFetchToolInput
 		if err := json.Unmarshal(toolInput, &input); err == nil {
 			return input.URL
+		}
+	case toolWebSearch:
+		var input aflock.WebSearchToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil {
+			return input.Query
 		}
 	}
 	return ""
 }
 
 // extractFilePath extracts the file path from tool input, handling different tool input formats.
-func extractFilePath(toolName string, toolInput json.RawMessage) (string, bool) {
+// Different tools use different JSON field names for their path:
+//   - Read/Write/Edit: "file_path"
+//   - Grep/Glob: "path" (optional, defaults to CWD)
+//   - NotebookEdit: "notebook_path"
+//
+// Returns (path, error). A nil error with empty path means the JSON was valid but the
+// path field was empty/missing (normal for Glob/Grep where path defaults to CWD).
+// A non-nil error means malformed JSON (fail-closed).
+func extractFilePath(toolName string, toolInput json.RawMessage) (string, error) {
 	switch toolName {
-	case "Read", "Write", "Edit":
-		var input aflock.FileToolInput
-		if err := json.Unmarshal(toolInput, &input); err == nil && input.FilePath != "" {
-			return input.FilePath, true
-		}
-	case "Glob":
+	case toolGlob:
 		var input aflock.GlobToolInput
-		if err := json.Unmarshal(toolInput, &input); err == nil {
-			// Glob's path field is the directory to search in
-			if input.Path != "" {
-				return input.Path, true
-			}
+		if err := json.Unmarshal(toolInput, &input); err != nil {
+			return "", fmt.Errorf("failed to parse file tool input: %w", err)
 		}
-	case "Grep":
+		return input.Path, nil
+	case toolGrep:
 		var input aflock.GrepToolInput
-		if err := json.Unmarshal(toolInput, &input); err == nil {
-			if input.Path != "" {
-				return input.Path, true
-			}
+		if err := json.Unmarshal(toolInput, &input); err != nil {
+			return "", fmt.Errorf("failed to parse file tool input: %w", err)
 		}
+		return input.Path, nil
+	case toolNotebookEdit:
+		var input aflock.NotebookEditToolInput
+		if err := json.Unmarshal(toolInput, &input); err != nil {
+			return "", fmt.Errorf("failed to parse file tool input: %w", err)
+		}
+		return input.NotebookPath, nil
+	default:
+		var input aflock.FileToolInput
+		if err := json.Unmarshal(toolInput, &input); err != nil {
+			return "", fmt.Errorf("failed to parse file tool input: %w", err)
+		}
+		return input.FilePath, nil
 	}
-	return "", false
 }
 
 // filePathVariants returns all path forms to try when matching against glob patterns.
@@ -196,20 +239,31 @@ func (e *Evaluator) matchFilePattern(pattern string, variants []string) bool {
 // These tools (Glob, Grep) take a starting directory and search within it. Their "path" is a
 // search root, not a specific file being accessed.
 func isDirectoryTool(toolName string) bool {
-	return toolName == "Glob" || toolName == "Grep"
+	return toolName == toolGlob || toolName == toolGrep
 }
 
 // evaluateFileAccess checks file access against policy.
+//
+//nolint:gocognit,gocyclo // file access evaluation has complex path logic
 func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessage) (aflock.PermissionDecision, string) {
 	if e.policy.Files == nil {
 		return aflock.DecisionAllow, ""
 	}
 
-	filePath, ok := extractFilePath(toolName, toolInput)
-	if !ok {
-		// Could not extract a file path from the input — allow for tools
-		// where path is optional (Glob/Grep default to CWD).
-		return aflock.DecisionAllow, ""
+	filePath, err := extractFilePath(toolName, toolInput)
+	if err != nil {
+		// Malformed JSON — fail-closed
+		return aflock.DecisionDeny, err.Error()
+	}
+
+	if filePath == "" {
+		// Valid JSON but no path specified.
+		// For directory tools (Glob/Grep), path is optional (defaults to CWD) — allow.
+		if isDirectoryTool(toolName) {
+			return aflock.DecisionAllow, ""
+		}
+		// For other file tools, empty path won't match any allow patterns, so fall
+		// through to the allow-list check below which will deny appropriately.
 	}
 
 	// Build all path variants for matching (absolute, relative, basename)
@@ -234,7 +288,7 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 	}
 
 	// Check readOnly for write operations
-	if toolName == "Write" || toolName == "Edit" {
+	if toolName == toolWrite || toolName == toolEdit {
 		for _, pattern := range e.policy.Files.ReadOnly {
 			if e.matchFilePattern(pattern, variants) {
 				return aflock.DecisionDeny, fmt.Sprintf("File '%s' is read-only (matches '%s')", filePath, pattern)
@@ -293,12 +347,12 @@ func (e *Evaluator) evaluateDomainAccess(toolInput json.RawMessage) (aflock.Perm
 
 	var input aflock.WebFetchToolInput
 	if err := json.Unmarshal(toolInput, &input); err != nil {
-		return aflock.DecisionAllow, ""
+		return aflock.DecisionDeny, fmt.Sprintf("failed to parse network tool input: %v", err)
 	}
 
 	domain := extractDomain(input.URL)
 	if domain == "" {
-		return aflock.DecisionAllow, ""
+		return aflock.DecisionDeny, "empty domain in network request"
 	}
 
 	// Check deny patterns first
@@ -327,7 +381,7 @@ func (e *Evaluator) evaluateDomainAccess(toolInput json.RawMessage) (aflock.Perm
 
 func isFileOperation(toolName string) bool {
 	switch toolName {
-	case "Read", "Write", "Edit", "Glob", "Grep":
+	case toolRead, toolWrite, toolEdit, toolGlob, toolGrep, toolNotebookEdit:
 		return true
 	default:
 		return false
@@ -336,30 +390,59 @@ func isFileOperation(toolName string) bool {
 
 func isNetworkOperation(toolName string) bool {
 	switch toolName {
-	case "WebFetch", "WebSearch":
+	case toolWebFetch, toolWebSearch:
 		return true
 	default:
-		// Check for MCP tools that might access network
-		return strings.HasPrefix(toolName, "mcp__")
+		return false
 	}
 }
 
-func extractDomain(url string) string {
-	// Simple domain extraction
-	url = strings.TrimPrefix(url, "https://")
-	url = strings.TrimPrefix(url, "http://")
-	if idx := strings.Index(url, "/"); idx != -1 {
-		url = url[:idx]
+func extractDomain(rawURL string) string {
+	// Case-insensitive scheme stripping — URLs like HTTPS://evil.com or Http://evil.com
+	// must be handled correctly to prevent domain deny rule bypasses.
+	lower := strings.ToLower(rawURL)
+	if strings.HasPrefix(lower, "https://") {
+		rawURL = rawURL[len("https://"):]
+	} else if strings.HasPrefix(lower, "http://") {
+		rawURL = rawURL[len("http://"):]
 	}
-	if idx := strings.Index(url, ":"); idx != -1 {
-		url = url[:idx]
+
+	// Security (R3-231): Strip protocol-relative URL prefix.
+	// Without this, //evil.com extracts "//evil.com" which won't match
+	// deny patterns like "evil.com".
+	rawURL = strings.TrimLeft(rawURL, "/")
+
+	// Strip path first
+	if idx := strings.Index(rawURL, "/"); idx != -1 {
+		rawURL = rawURL[:idx]
 	}
-	return url
+
+	// Security: strip userinfo (user:pass@) before extracting host.
+	// Without this, https://user:pass@evil.com extracts "user" instead of
+	// "evil.com", allowing domain deny rule bypass (R3-122).
+	if idx := strings.LastIndex(rawURL, "@"); idx != -1 {
+		rawURL = rawURL[idx+1:]
+	}
+
+	// Strip port
+	if idx := strings.Index(rawURL, ":"); idx != -1 {
+		rawURL = rawURL[:idx]
+	}
+
+	// Security (R3-236): Normalize domain to lowercase.
+	// DNS is case-insensitive (RFC 4343), so EVIL.COM and evil.com are
+	// the same domain. Without this, deny rules for "evil.com" wouldn't
+	// block "EVIL.COM".
+	rawURL = strings.ToLower(rawURL)
+
+	return rawURL
 }
 
 // EvaluateDataFlow checks if an operation violates data flow rules.
 // For source operations (reads), it returns materials to track.
 // For sink operations (writes), it checks materials against rules.
+//
+//nolint:gocognit,gocyclo // data flow evaluation checks many tool x label combos
 func (e *Evaluator) EvaluateDataFlow(toolName string, toolInput json.RawMessage, materials []aflock.MaterialClassification) (aflock.PermissionDecision, string, *aflock.MaterialClassification) {
 	if e.policy.DataFlow == nil {
 		return aflock.DecisionAllow, "", nil
@@ -374,9 +457,18 @@ func (e *Evaluator) EvaluateDataFlow(toolName string, toolInput json.RawMessage,
 		currentLabels = append(currentLabels, m.Label)
 	}
 
-	// Check classifications to see what label this tool has
+	// Check classifications to see what label this tool has.
+	// Sort labels for deterministic evaluation — Go map iteration is non-deterministic,
+	// so without sorting, the same input could match different labels on different runs.
+	classifyLabels := make([]string, 0, len(e.policy.DataFlow.Classify))
+	for label := range e.policy.DataFlow.Classify {
+		classifyLabels = append(classifyLabels, label)
+	}
+	sort.Strings(classifyLabels)
+
 	var matchedLabel string
-	for label, patterns := range e.policy.DataFlow.Classify {
+	for _, label := range classifyLabels {
+		patterns := e.policy.DataFlow.Classify[label]
 		for _, pattern := range patterns {
 			if e.matcher.MatchToolPattern(pattern, toolName, inputStr) {
 				matchedLabel = label
@@ -400,7 +492,7 @@ func (e *Evaluator) EvaluateDataFlow(toolName string, toolInput json.RawMessage,
 	}
 
 	// If this is a write operation, check flow rules
-	if matchedLabel != "" && isWriteOperation(toolName) {
+	if matchedLabel != "" && isWriteOperation(toolName) { //nolint:nestif
 		sinkLabel := matchedLabel
 
 		// Check all flow rules
@@ -429,7 +521,7 @@ func (e *Evaluator) EvaluateDataFlow(toolName string, toolInput json.RawMessage,
 
 func isReadOperation(toolName string) bool {
 	switch toolName {
-	case "Read", "Glob", "Grep", "WebFetch":
+	case toolRead, toolGlob, toolGrep, toolWebFetch, toolWebSearch:
 		return true
 	default:
 		return strings.HasPrefix(toolName, "mcp__") && !strings.Contains(toolName, "write")
@@ -438,7 +530,7 @@ func isReadOperation(toolName string) bool {
 
 func isWriteOperation(toolName string) bool {
 	switch toolName {
-	case "Write", "Edit", "Bash":
+	case toolWrite, toolEdit, "Bash":
 		return true
 	default:
 		return strings.HasPrefix(toolName, "mcp__") && strings.Contains(toolName, "write")

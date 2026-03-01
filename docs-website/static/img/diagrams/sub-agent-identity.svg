@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 680" width="600" height="680" font-family="system-ui, sans-serif">
+  <defs>
+    <filter id="shadow3" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="#000" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrowDown3" markerWidth="10" markerHeight="10" refX="5" refY="10" orient="auto">
+      <polygon points="0 0, 10 0, 5 10" fill="#6366f1"/>
+    </marker>
+    <marker id="arrowUp3" markerWidth="10" markerHeight="10" refX="5" refY="0" orient="auto">
+      <polygon points="0 10, 10 10, 5 0" fill="#ef4444"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="600" height="680" rx="12" fill="#f8fafc"/>
+
+  <!-- Title -->
+  <text x="300" y="38" text-anchor="middle" font-size="18" font-weight="700" fill="#1e1e1e">Parent / Sub-Agent Identity Chaining</text>
+  <line x1="130" y1="50" x2="470" y2="50" stroke="#c7d2fe" stroke-width="1.5"/>
+
+  <!-- ===== Parent Identity Box ===== -->
+  <rect x="50" y="70" width="500" height="230" rx="8" fill="#fff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow3)"/>
+
+  <!-- Header -->
+  <rect x="50" y="70" width="500" height="42" rx="8" fill="#6366f1"/>
+  <rect x="50" y="96" width="500" height="16" fill="#6366f1"/>
+  <text x="300" y="96" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Parent Identity</text>
+
+  <!-- Hash badge -->
+  <rect x="130" y="120" width="340" height="26" rx="13" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="300" y="137" text-anchor="middle" font-size="12" font-weight="600" fill="#6366f1" font-family="ui-monospace, monospace">sha256:aaa...</text>
+
+  <!-- Parent fields -->
+  <g font-size="12.5">
+    <text x="90" y="176" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">model: </tspan>claude-opus-4</text>
+    <text x="90" y="200" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">env: </tspan>container:xyz</text>
+    <text x="90" y="224" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">tools: </tspan>[Read, Edit, Task, ...]</text>
+    <text x="90" y="248" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">policy: </tspan><tspan font-family="ui-monospace, monospace" font-size="11">sha256:parent-policy</tspan></text>
+    <text x="90" y="272" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">parent: </tspan><tspan fill="#94a3b8">null</tspan></text>
+  </g>
+
+  <!-- Arrow down: spawns -->
+  <line x1="300" y1="300" x2="300" y2="378" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowDown3)"/>
+  <rect x="246" y="322" width="108" height="28" rx="8" fill="#6366f1"/>
+  <text x="300" y="340" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">spawns</text>
+
+  <!-- ===== Sub-Agent Identity Box ===== -->
+  <rect x="50" y="390" width="500" height="240" rx="8" fill="#fff" stroke="#c7d2fe" stroke-width="1.5" filter="url(#shadow3)"/>
+
+  <!-- Header -->
+  <rect x="50" y="390" width="500" height="42" rx="8" fill="#818cf8"/>
+  <rect x="50" y="416" width="500" height="16" fill="#818cf8"/>
+  <text x="300" y="416" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Sub-Agent Identity</text>
+
+  <!-- Hash badge -->
+  <rect x="130" y="440" width="340" height="26" rx="13" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="300" y="457" text-anchor="middle" font-size="12" font-weight="600" fill="#6366f1" font-family="ui-monospace, monospace">sha256:bbb...</text>
+
+  <!-- Sub-agent fields -->
+  <g font-size="12.5">
+    <text x="90" y="496" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">model: </tspan>claude-sonnet-4</text>
+    <text x="90" y="520" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">env: </tspan>container:xyz</text>
+    <!-- "inherited" annotation -->
+    <rect x="254" y="508" width="72" height="18" rx="9" fill="#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+    <text x="290" y="520" text-anchor="middle" font-size="9" font-weight="600" fill="#818cf8">inherited</text>
+
+    <text x="90" y="544" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">tools: </tspan>[Read, WebFetch]</text>
+    <!-- "subset" annotation -->
+    <rect x="266" y="532" width="56" height="18" rx="9" fill="#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+    <text x="294" y="544" text-anchor="middle" font-size="9" font-weight="600" fill="#818cf8">subset</text>
+
+    <text x="90" y="568" fill="#1e1e1e"><tspan font-weight="600" fill="#6366f1">policy: </tspan><tspan font-family="ui-monospace, monospace" font-size="11">sha256:sublayout-policy</tspan></text>
+  </g>
+
+  <!-- Highlighted parent field -->
+  <rect x="80" y="579" width="460" height="38" rx="6" fill="#fef2f2" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="0"/>
+  <text x="90" y="603" font-size="12.5" fill="#1e1e1e">
+    <tspan font-weight="700" fill="#ef4444">parent: </tspan>
+    <tspan font-family="ui-monospace, monospace" font-size="11" font-weight="600">sha256:aaa...</tspan>
+    <tspan fill="#64748b" font-size="11">  (links to parent)</tspan>
+  </text>
+
+  <!-- Curved arrow linking parent field back up -->
+  <path d="M 540 598 C 570 598, 578 400, 578 270 C 578 200, 560 150, 550 135"
+        fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="5,3"
+        marker-end="url(#arrowUp3)"/>
+
+  <!-- Label on the curved arrow -->
+  <rect x="556" y="360" width="36" height="50" rx="4" fill="#fef2f2" stroke="#ef4444" stroke-width="0.8"/>
+  <text x="574" y="380" text-anchor="middle" font-size="9" font-weight="600" fill="#ef4444" transform="rotate(-90,574,385)">links to</text>
+
+  <!-- Legend -->
+  <rect x="30" y="645" width="540" height="26" rx="6" fill="#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <circle cx="52" cy="658" r="6" fill="#ef4444"/>
+  <text x="66" y="662" font-size="10" fill="#64748b">= Identity chain link (sub-agent references its parent identity hash)</text>
+</svg>

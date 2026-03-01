@@ -43,11 +43,11 @@ Agents receive a **JWT** for authorization, but attestations are signed by a **k
 
 ```
 ┌─────────────────────┐    ┌─────────────────────────────────┐
-│  JWT (Agent Holds)  │    │  Signing Key (Server Holds)    │
+│  JWT (Agent Holds)  │    │  Signing Key (Server Holds)     │
 │                     │    │                                 │
-│  - Identity claims  │    │  - Never exposed to agent      │
-│  - Granted scopes   │    │  - Signs all attestations      │
-│  - Short-lived      │    │  - Bound to agent identity     │
+│  - Identity claims  │    │  - Never exposed to agent       │
+│  - Granted scopes   │    │  - Signs all attestations       │
+│  - Short-lived      │    │  - Bound to agent identity      │
 └─────────────────────┘    └─────────────────────────────────┘
 ```
 
@@ -56,14 +56,14 @@ The agent **presents** the JWT but **cannot sign** attestations. All signatures 
 ## Architecture
 
 ```
-┌──────────────────────┐          ┌──────────────────────┐
-│  AI Agent            │   MCP    │  aflock Server       │
-│  (Claude Code)       │◄────────►│                      │
-│                      │          │  - PID introspection │
+┌──────────────────────┐          ┌───────────────────────┐
+│  AI Agent            │   MCP    │  aflock Server        │
+│  (Claude Code)       │◄────────►│                       │
+│                      │          │  - PID introspection  │
 │  - Calls MCP tools   │          │  - Identity derivation│
 │  - Holds JWT         │          │  - Policy enforcement │
 │  - Never sees keys   │          │  - Attestation signing│
-└──────────────────────┘          └──────────────────────┘
+└──────────────────────┘          └───────────────────────┘
 ```
 
 Based on [SPIRE](https://github.com/spiffe/spire) architecture - battle-tested workload identity.
@@ -172,8 +172,8 @@ Inspired by [in-toto sublayouts](https://github.com/in-toto/specification):
 
 ## Documentation
 
-- **[Specification](docs/spec.md)** - Full schema, verification algorithm, SPIRE reference
-- **[Examples](examples/)** - Compliance evaluation, todo app verification
+- **[Specification](docs/reference/specification.md)** - Full schema, verification algorithm, SPIRE reference
+- **[Examples](docs/examples/compliance-evaluation)** - Compliance evaluation, todo app verification
 
 ## Status
 
@@ -181,4 +181,4 @@ Private development. Specification phase.
 
 ## License
 
-Apache License 2.0 - See [LICENSE](LICENSE) for details.
+Apache License 2.0 - See [LICENSE](https://github.com/aflock-ai/aflock/blob/main/LICENSE) for details.

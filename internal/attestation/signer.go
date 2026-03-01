@@ -1,4 +1,4 @@
-// Package attestation provides in-toto attestation creation and signing.
+// Package attestation provides attestation creation and signing.
 package attestation
 
 import (
@@ -6,7 +6,9 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -14,21 +16,20 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
-	"github.com/in-toto/go-witness/attestation"
-	"github.com/in-toto/go-witness/cryptoutil"
-	"github.com/in-toto/go-witness/dsse"
+	"github.com/aflock-ai/rookery/attestation"
+	"github.com/aflock-ai/rookery/attestation/cryptoutil"
+	"github.com/aflock-ai/rookery/attestation/dsse"
 
 	"github.com/aflock-ai/aflock/internal/identity"
 	"github.com/aflock-ai/aflock/pkg/aflock"
 )
 
 const (
-	// PayloadType is the DSSE payload type for in-toto statements.
+	// PayloadType is the DSSE payload type for attestation statements.
 	PayloadType = "application/vnd.in-toto+json"
-	// StatementType is the in-toto statement type.
+	// StatementType is the attestation statement type.
 	StatementType = "https://in-toto.io/Statement/v1"
 	// PredicateTypeAflockAction is the predicate type for aflock actions.
 	PredicateTypeAflockAction = "https://aflock.ai/attestations/action/v0.1"
@@ -36,10 +37,9 @@ const (
 
 // Signer creates and signs attestations.
 type Signer struct {
-	spireClient       *identity.SpireClient
-	identity          *identity.Identity
-	delegatedIdentity *identity.DelegatedIdentity
-	modelName         string
+	spireClient *identity.SpireClient
+	identity    *identity.Identity
+	modelName   string
 }
 
 // NewSigner creates a new attestation signer.
@@ -65,7 +65,7 @@ func (s *Signer) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// SetModel sets the AI model name and attempts to get a delegated identity.
+// SetModel sets the AI model name and validates it against the trusted models list.
 // This should be called after Initialize when the model is known.
 func (s *Signer) SetModel(ctx context.Context, modelName string) error {
 	s.modelName = modelName
@@ -75,39 +75,12 @@ func (s *Signer) SetModel(ctx context.Context, modelName string) error {
 		return fmt.Errorf("model %s is not trusted - attestations will not be signed", modelName)
 	}
 
-	// Try to get delegated identity for this model
-	delegated, err := s.spireClient.GetDelegatedIdentity(ctx, modelName)
-	if err != nil {
-		// Log warning but continue - we can still sign with aflock's identity
-		fmt.Fprintf(os.Stderr, "[aflock] Warning: could not get delegated identity for %s: %v\n", modelName, err)
-		return nil
-	}
-
-	s.delegatedIdentity = delegated
-	fmt.Fprintf(os.Stderr, "[aflock] Using delegated identity: %s (delegated by %s)\n",
-		delegated.AgentSPIFFEID, delegated.DelegatedBy)
 	return nil
 }
 
 // GetSigningIdentity returns the identity to use for signing.
-// Returns delegated identity if available, otherwise falls back to aflock's identity.
 func (s *Signer) GetSigningIdentity() (*identity.Identity, string) {
-	if s.delegatedIdentity != nil {
-		// Convert delegated identity to regular identity for signing
-		return &identity.Identity{
-			SPIFFEID:    s.delegatedIdentity.AgentSPIFFEID,
-			Certificate: s.delegatedIdentity.Certificate,
-			PrivateKey:  s.delegatedIdentity.PrivateKey,
-			TrustBundle: s.delegatedIdentity.TrustBundle,
-			ExpiresAt:   s.delegatedIdentity.ExpiresAt,
-		}, s.delegatedIdentity.ModelName
-	}
 	return s.identity, ""
-}
-
-// IsDelegated returns true if we have a delegated identity for an AI agent.
-func (s *Signer) IsDelegated() bool {
-	return s.delegatedIdentity != nil
 }
 
 // Close releases resources.
@@ -118,7 +91,7 @@ func (s *Signer) Close() error {
 	return nil
 }
 
-// Statement represents an in-toto statement.
+// Statement represents an attestation statement.
 type Statement struct {
 	Type          string      `json:"_type"`
 	Subject       []Subject   `json:"subject"`
@@ -126,7 +99,7 @@ type Statement struct {
 	Predicate     interface{} `json:"predicate"`
 }
 
-// Subject represents an in-toto subject.
+// Subject represents an attestation subject.
 type Subject struct {
 	Name   string            `json:"name"`
 	Digest map[string]string `json:"digest"`
@@ -296,10 +269,16 @@ func (s *Signer) Sign(ctx context.Context, statement Statement) (*Envelope, erro
 }
 
 // createPAE creates Pre-Authentication Encoding for DSSE.
+// Uses byte slice concatenation instead of fmt.Sprintf to avoid
+// corrupting non-UTF-8 payload bytes via string() conversion.
 func createPAE(payloadType string, payload []byte) []byte {
-	return []byte(fmt.Sprintf("DSSEv1 %d %s %d %s",
+	prefix := fmt.Sprintf("DSSEv1 %d %s %d ",
 		len(payloadType), payloadType,
-		len(payload), string(payload)))
+		len(payload))
+	result := make([]byte, 0, len(prefix)+len(payload))
+	result = append(result, []byte(prefix)...)
+	result = append(result, payload...)
+	return result
 }
 
 // signWithPrivateKey signs data using the provided private key.
@@ -352,7 +331,7 @@ func (s *Signer) ExportTrustBundlePEM() ([]byte, error) {
 }
 
 // VerifyEnvelope verifies a DSSE envelope signature.
-func VerifyEnvelope(envelope *Envelope, trustedCerts []*x509.Certificate) error {
+func VerifyEnvelope(envelope *Envelope, trustedCerts []*x509.Certificate) error { //nolint:gocognit // complex signature verification logic
 	if len(envelope.Signatures) == 0 {
 		return fmt.Errorf("no signatures in envelope")
 	}
@@ -374,14 +353,27 @@ func VerifyEnvelope(envelope *Envelope, trustedCerts []*x509.Certificate) error 
 			return fmt.Errorf("decode signature: %w", err)
 		}
 
-		// Find matching certificate
+		// Find matching certificate — supports ECDSA, RSA, and Ed25519
 		verified := false
 		for _, cert := range trustedCerts {
-			if ecdsaKey, ok := cert.PublicKey.(*ecdsa.PublicKey); ok {
-				if ecdsa.VerifyASN1(ecdsaKey, hash[:], sigBytes) {
+			switch key := cert.PublicKey.(type) {
+			case *ecdsa.PublicKey:
+				if ecdsa.VerifyASN1(key, hash[:], sigBytes) {
 					verified = true
-					break
 				}
+			case *rsa.PublicKey:
+				if rsa.VerifyPKCS1v15(key, crypto.SHA256, hash[:], sigBytes) == nil {
+					verified = true
+				} else if rsa.VerifyPSS(key, crypto.SHA256, hash[:], sigBytes, nil) == nil {
+					verified = true
+				}
+			case ed25519.PublicKey:
+				if ed25519.Verify(key, pae, sigBytes) {
+					verified = true
+				}
+			}
+			if verified {
+				break
 			}
 		}
 
@@ -433,18 +425,12 @@ func (s *spireSigner) Verifier() (cryptoutil.Verifier, error) {
 	return cryptoutil.NewVerifier(s.identity.Certificate.PublicKey)
 }
 
-// SignCollection signs a go-witness attestation Collection and returns a DSSE envelope.
+// SignCollection signs an attestation Collection and returns a DSSE envelope.
 func (s *Signer) SignCollection(ctx context.Context, collection attestation.Collection) (*dsse.Envelope, error) {
-	// Get the appropriate signing identity (delegated or aflock's)
-	signingIdentity, modelName := s.GetSigningIdentity()
+	// Get the signing identity
+	signingIdentity, _ := s.GetSigningIdentity()
 	if signingIdentity == nil {
 		return nil, fmt.Errorf("no signing identity available")
-	}
-
-	// Log which identity we're using
-	if s.IsDelegated() {
-		fmt.Fprintf(os.Stderr, "[aflock] Signing as agent: %s (model: %s)\n",
-			signingIdentity.SPIFFEID, modelName)
 	}
 
 	// Serialize collection to JSON
@@ -456,7 +442,7 @@ func (s *Signer) SignCollection(ctx context.Context, collection attestation.Coll
 	// Create signer wrapper with the signing identity
 	signer := &spireSigner{identity: signingIdentity}
 
-	// Sign with go-witness DSSE
+	// Sign with DSSE
 	envelope, err := dsse.Sign(attestation.CollectionType, bytes.NewReader(collectionJSON),
 		dsse.SignWithSigners(signer),
 	)

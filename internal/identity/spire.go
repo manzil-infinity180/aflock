@@ -16,12 +16,8 @@ import (
 const (
 	// DefaultSocketPath is the default SPIRE workload API socket path.
 	DefaultSocketPath = "unix:///tmp/spire-agent/public/api.sock"
-	// DefaultAdminSocketPath is the default SPIRE admin API socket path for delegated identity.
-	DefaultAdminSocketPath = "unix:///tmp/spire-agent/admin/api.sock"
 	// EnvSocketPath is the environment variable for the socket path.
 	EnvSocketPath = "SPIFFE_ENDPOINT_SOCKET"
-	// EnvAdminSocketPath is the environment variable for the admin socket path.
-	EnvAdminSocketPath = "SPIFFE_ADMIN_SOCKET"
 	// TrustDomain is the SPIFFE trust domain for aflock.
 	TrustDomain = "aflock.ai"
 )
@@ -158,7 +154,7 @@ func (c *SpireClient) IsAvailable() bool {
 	if err := c.Connect(ctx); err != nil {
 		return false
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	_, err := c.FetchX509SVID(ctx)
 	return err == nil
@@ -174,28 +170,8 @@ func MustHaveSPIRE() error {
 	return nil
 }
 
-// DelegatedIdentity represents a delegated identity for an AI agent.
-// This allows aflock to sign attestations on behalf of trusted AI models.
-type DelegatedIdentity struct {
-	AgentSPIFFEID spiffeid.ID
-	ModelName     string
-	DelegatedBy   string
-	Certificate   *x509.Certificate
-	PrivateKey    interface{}
-	TrustBundle   []*x509.Certificate
-	ExpiresAt     time.Time
-}
-
 // IsTrustedModel checks if the given model name is in the trusted models list.
 func IsTrustedModel(modelName string) bool {
 	_, ok := TrustedModels[modelName]
 	return ok
-}
-
-// GetDelegatedIdentity fetches a delegated identity for a trusted AI model.
-// This is a placeholder - delegated identity via SPIRE admin API is not yet implemented.
-func (c *SpireClient) GetDelegatedIdentity(ctx context.Context, modelName string) (*DelegatedIdentity, error) {
-	// TODO: Implement delegated identity via SPIRE admin API
-	// For now, return an error indicating this is not yet available
-	return nil, fmt.Errorf("delegated identity not yet implemented for model %s", modelName)
 }
