@@ -192,6 +192,13 @@ func (e *Evaluator) matchFilePattern(pattern string, variants []string) bool {
 	return false
 }
 
+// isDirectoryTool returns true for tools that scan directories rather than access individual files.
+// These tools (Glob, Grep) take a starting directory and search within it. Their "path" is a
+// search root, not a specific file being accessed.
+func isDirectoryTool(toolName string) bool {
+	return toolName == "Glob" || toolName == "Grep"
+}
+
 // evaluateFileAccess checks file access against policy.
 func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessage) (aflock.PermissionDecision, string) {
 	if e.policy.Files == nil {
@@ -200,8 +207,8 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 
 	filePath, ok := extractFilePath(toolName, toolInput)
 	if !ok {
-		// Could not extract a file path from the input — deny for safety
-		// rather than silently allowing unrecognized input.
+		// Could not extract a file path from the input — allow for tools
+		// where path is optional (Glob/Grep default to CWD).
 		return aflock.DecisionAllow, ""
 	}
 
@@ -212,6 +219,17 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 	for _, pattern := range e.policy.Files.Deny {
 		if e.matchFilePattern(pattern, variants) {
 			return aflock.DecisionDeny, fmt.Sprintf("File '%s' matches deny pattern '%s'", filePath, pattern)
+		}
+		// For directory tools, also check if children of this directory would match deny.
+		// e.g., if searching from "secrets/" and deny has "**/secrets/**", the directory
+		// itself might not match but files within it would.
+		if isDirectoryTool(toolName) {
+			for _, v := range variants {
+				childPath := v + "/child"
+				if e.matcher.MatchGlob(pattern, childPath) {
+					return aflock.DecisionDeny, fmt.Sprintf("Directory '%s' contains denied files (matches '%s')", filePath, pattern)
+				}
+			}
 		}
 	}
 
@@ -233,6 +251,32 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 				break
 			}
 		}
+
+		// For directory tools (Glob, Grep), if the path is the project root (".")
+		// or resolves to it, allow the search. These tools scan directories and return
+		// results — they don't write or modify files. The deny patterns above already
+		// block access to sensitive directories, and individual file Read/Write/Edit
+		// operations have their own allow checks.
+		if !allowed && isDirectoryTool(toolName) {
+			for _, v := range variants {
+				if v == "." {
+					allowed = true
+					break
+				}
+				// Also check if any child of this directory would match an allow pattern
+				childPath := v + "/child"
+				for _, pattern := range e.policy.Files.Allow {
+					if e.matcher.MatchGlob(pattern, childPath) {
+						allowed = true
+						break
+					}
+				}
+				if allowed {
+					break
+				}
+			}
+		}
+
 		if !allowed {
 			return aflock.DecisionDeny, fmt.Sprintf("File '%s' not in allow list", filePath)
 		}
