@@ -36,8 +36,8 @@ type Server struct {
 	sessionID     string
 
 	// In-memory data flow tracking (thread-safe for concurrent MCP requests)
-	mu        sync.Mutex
-	materials []aflock.MaterialClassification
+	mu             sync.Mutex
+	materials      []aflock.MaterialClassification
 	signer         *attestation.Signer
 	signingEnabled bool
 	attestDir      string     // Directory for storing step attestations by git tree hash

@@ -76,7 +76,9 @@ func TestHandle_UnknownHook(t *testing.T) {
 
 	origStdin := os.Stdin
 	r, w, _ := os.Pipe()
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		t.Fatalf("write: %v", err)
+	}
 	w.Close()
 	os.Stdin = r
 	defer func() { os.Stdin = origStdin }()
@@ -95,7 +97,9 @@ func TestHandle_InvalidJSON(t *testing.T) {
 
 	origStdin := os.Stdin
 	r, w, _ := os.Pipe()
-	w.Write([]byte("not json"))
+	if _, err := w.Write([]byte("not json")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
 	w.Close()
 	os.Stdin = r
 	defer func() { os.Stdin = origStdin }()
@@ -370,7 +374,9 @@ func TestHandlePreToolUse_DataFlowBlocked(t *testing.T) {
 	})
 
 	var readOut aflock.HookOutput
-	json.Unmarshal([]byte(got), &readOut)
+	if err := json.Unmarshal([]byte(got), &readOut); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if readOut.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Fatalf("expected read to be allowed, got %v", readOut.HookSpecificOutput.PermissionDecision)
 	}
@@ -425,7 +431,9 @@ func TestHandlePreToolUse_DataFlowAllowsUnrelated(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("expected allow, got %v", out.HookSpecificOutput.PermissionDecision)
 	}
@@ -602,7 +610,9 @@ func TestHandlePostToolUse_DuplicateFileNotDoubleTracked(t *testing.T) {
 			ToolInput: json.RawMessage(`{"file_path": "/app/same.go"}`),
 		}
 		captureStdout(t, func() {
-			h.handlePostToolUse(input)
+			if err := h.handlePostToolUse(input); err != nil {
+				t.Fatalf("handlePostToolUse: %v", err)
+			}
 		})
 	}
 
@@ -731,7 +741,9 @@ func TestHandlePostToolUse_PostHocLimitIgnoredInFailFast(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handlePostToolUse(input)
+		if err := h.handlePostToolUse(input); err != nil {
+			t.Fatalf("handlePostToolUse: %v", err)
+		}
 	})
 
 	// Post-hoc limits are not checked during fail-fast, so output should be empty
@@ -756,7 +768,9 @@ func TestHandleStop_NoSession(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	// StopAllow returns empty HookOutput
 	if out.Decision == "block" {
 		t.Error("expected allow (no block), got block")
@@ -774,11 +788,15 @@ func TestHandleStop_SessionNilPolicy(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Error("expected allow for nil policy")
 	}
@@ -796,11 +814,15 @@ func TestHandleStop_NoRequiredAttestations(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Error("expected allow when no attestations required")
 	}
@@ -821,11 +843,15 @@ func TestHandleStop_MissingAttestation(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision != "block" {
 		t.Errorf("expected block for missing attestation, got %q", out.Decision)
 	}
@@ -857,11 +883,15 @@ func TestHandleStop_AttestationPresent_ExactFile(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Errorf("expected allow when attestation file exists, got block: %s", out.Reason)
 	}
@@ -886,11 +916,15 @@ func TestHandleStop_AttestationPresent_IntotoFile(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Errorf("expected allow with .intoto.json file, got block: %s", out.Reason)
 	}
@@ -930,11 +964,15 @@ func TestHandleStop_AttestationFoundByContent(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Errorf("expected allow via content match, got block: %s", out.Reason)
 	}
@@ -973,11 +1011,15 @@ func TestHandleStop_AttestationFoundByActionField(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Errorf("expected allow via action field match, got block: %s", out.Reason)
 	}
@@ -1002,11 +1044,15 @@ func TestHandleStop_MultipleAttestations_OneMissing(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "session-multi"}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision != "block" {
 		t.Errorf("expected block with missing deploy attestation")
 	}
@@ -1033,11 +1079,15 @@ func TestHandleStop_AllAttestationsPresent(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "session-all-ok"}
 
 	got := captureStdout(t, func() {
-		h.handleStop(input)
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Errorf("expected allow with all attestations, got block: %s", out.Reason)
 	}
@@ -1053,7 +1103,9 @@ func TestHandlePermissionRequest_ReturnsEmpty(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "session-perm"}
 
 	got := captureStdout(t, func() {
-		h.handlePermissionRequest(input)
+		if err := h.handlePermissionRequest(input); err != nil {
+			t.Fatalf("handlePermissionRequest: %v", err)
+		}
 	})
 
 	if got != "{}" {
@@ -1066,7 +1118,9 @@ func TestHandlePermissionRequest_NoSession_ReturnsEmpty(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "no-session"}
 
 	got := captureStdout(t, func() {
-		h.handlePermissionRequest(input)
+		if err := h.handlePermissionRequest(input); err != nil {
+			t.Fatalf("handlePermissionRequest: %v", err)
+		}
 	})
 
 	if got != "{}" {
@@ -1087,7 +1141,9 @@ func TestHandleUserPromptSubmit_IncrementsTurns(t *testing.T) {
 			Prompt:    "do something",
 		}
 		captureStdout(t, func() {
-			h.handleUserPromptSubmit(input)
+			if err := h.handleUserPromptSubmit(input); err != nil {
+				t.Fatalf("handleUserPromptSubmit: %v", err)
+			}
 		})
 	}
 
@@ -1102,7 +1158,9 @@ func TestHandleUserPromptSubmit_NoSession_ReturnsEmpty(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "no-session"}
 
 	got := captureStdout(t, func() {
-		h.handleUserPromptSubmit(input)
+		if err := h.handleUserPromptSubmit(input); err != nil {
+			t.Fatalf("handleUserPromptSubmit: %v", err)
+		}
 	})
 
 	if got != "{}" {
@@ -1117,11 +1175,15 @@ func TestHandleSubagentStop_Allows(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "any"}
 
 	got := captureStdout(t, func() {
-		h.handleSubagentStop(input)
+		if err := h.handleSubagentStop(input); err != nil {
+			t.Fatalf("handleSubagentStop: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Error("expected allow for subagent stop")
 	}
@@ -1134,7 +1196,9 @@ func TestHandleSessionEnd_NoSession(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "no-session"}
 
 	got := captureStdout(t, func() {
-		h.handleSessionEnd(input)
+		if err := h.handleSessionEnd(input); err != nil {
+			t.Fatalf("handleSessionEnd: %v", err)
+		}
 	})
 
 	if got != "{}" {
@@ -1158,7 +1222,9 @@ func TestHandleSessionEnd_PrintsMetrics(t *testing.T) {
 
 	// SessionEnd writes to stderr (metrics logging) and returns empty to stdout
 	got := captureStdout(t, func() {
-		h.handleSessionEnd(input)
+		if err := h.handleSessionEnd(input); err != nil {
+			t.Fatalf("handleSessionEnd: %v", err)
+		}
 	})
 
 	if got != "{}" {
@@ -1173,7 +1239,9 @@ func TestHandleNotification_ReturnsEmpty(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "any"}
 
 	got := captureStdout(t, func() {
-		h.handleNotification(input)
+		if err := h.handleNotification(input); err != nil {
+			t.Fatalf("handleNotification: %v", err)
+		}
 	})
 
 	if got != "{}" {
@@ -1188,7 +1256,9 @@ func TestHandlePreCompact_ReturnsEmpty(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "any"}
 
 	got := captureStdout(t, func() {
-		h.handlePreCompact(input)
+		if err := h.handlePreCompact(input); err != nil {
+			t.Fatalf("handlePreCompact: %v", err)
+		}
 	})
 
 	if got != "{}" {
@@ -1461,7 +1531,9 @@ func TestHandlePreToolUse_EphemeralSession_PolicyFromCwd(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(input)
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
@@ -1501,7 +1573,9 @@ func TestHandlePreToolUse_ActionsAccumulate(t *testing.T) {
 			ToolInput: json.RawMessage(tool.input),
 		}
 		captureStdout(t, func() {
-			h.handlePreToolUse(input)
+			if err := h.handlePreToolUse(input); err != nil {
+				t.Fatalf("handlePreToolUse: %v", err)
+			}
 		})
 	}
 
@@ -1542,11 +1616,15 @@ func TestHandlePreToolUse_WildcardAllow(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(input)
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("expected allow with wildcard, got %v", out.HookSpecificOutput.PermissionDecision)
 	}
@@ -1568,11 +1646,15 @@ func TestHandlePreToolUse_NilPolicyInSession_FallsThrough(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(input)
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("expected allow when no policy found, got %v", out.HookSpecificOutput.PermissionDecision)
 	}
@@ -1595,7 +1677,9 @@ func TestHandleSessionEnd_PostHocLimitExceeded_DoesNotBlock(t *testing.T) {
 	input := &aflock.HookInput{SessionID: "session-posthoc-end"}
 
 	got := captureStdout(t, func() {
-		h.handleSessionEnd(input)
+		if err := h.handleSessionEnd(input); err != nil {
+			t.Fatalf("handleSessionEnd: %v", err)
+		}
 	})
 
 	// Should still return empty JSON (not block)
@@ -1667,7 +1751,9 @@ func TestHandlePreToolUse_EmptySessionID(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(input)
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
 	})
 
 	// Should still work - allow since no policy found
@@ -1700,11 +1786,15 @@ func TestHandlePreToolUse_NilToolInput(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(input)
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("expected allow with nil tool input, got %v",
 			out.HookSpecificOutput.PermissionDecision)
@@ -1725,7 +1815,9 @@ func TestHandlePostToolUse_EmptyFilePath(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handlePostToolUse(input)
+		if err := h.handlePostToolUse(input); err != nil {
+			t.Fatalf("handlePostToolUse: %v", err)
+		}
 	})
 
 	// Should succeed even with empty file path
@@ -1757,11 +1849,15 @@ func TestHandlePreToolUse_PolicyNoToolsSection(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(input)
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("expected allow with no tools policy, got %v",
 			out.HookSpecificOutput.PermissionDecision)
@@ -1794,7 +1890,9 @@ func TestHandlePostToolUse_MixedFileOperations(t *testing.T) {
 			ToolInput: json.RawMessage(op.input),
 		}
 		captureStdout(t, func() {
-			h.handlePostToolUse(input)
+			if err := h.handlePostToolUse(input); err != nil {
+				t.Fatalf("handlePostToolUse: %v", err)
+			}
 		})
 	}
 
@@ -1832,11 +1930,15 @@ func TestIntegration_PreAndPostToolUse(t *testing.T) {
 	}
 
 	preOut := captureStdout(t, func() {
-		h.handlePreToolUse(preInput)
+		if err := h.handlePreToolUse(preInput); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
 	})
 
 	var preResult aflock.HookOutput
-	json.Unmarshal([]byte(preOut), &preResult)
+	if err := json.Unmarshal([]byte(preOut), &preResult); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
 	if preResult.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Fatalf("expected pre-tool allow")
 	}
@@ -1849,7 +1951,9 @@ func TestIntegration_PreAndPostToolUse(t *testing.T) {
 	}
 
 	postOut := captureStdout(t, func() {
-		h.handlePostToolUse(postInput)
+		if err := h.handlePostToolUse(postInput); err != nil {
+			t.Fatalf("handlePostToolUse: %v", err)
+		}
 	})
 
 	if postOut != "{}" {

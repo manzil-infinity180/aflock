@@ -866,11 +866,15 @@ func TestCreateActionAttestation_NilToolInput(t *testing.T) {
 	// Verify predicate has nil metrics and no agent identity
 	payloadBytes, _ := base64.StdEncoding.DecodeString(env.Payload)
 	var stmt Statement
-	json.Unmarshal(payloadBytes, &stmt)
+	if err := json.Unmarshal(payloadBytes, &stmt); err != nil {
+		t.Fatalf("unmarshal statement: %v", err)
+	}
 
 	predicateJSON, _ := json.Marshal(stmt.Predicate)
 	var pred ActionPredicate
-	json.Unmarshal(predicateJSON, &pred)
+	if err := json.Unmarshal(predicateJSON, &pred); err != nil {
+		t.Fatalf("unmarshal predicate: %v", err)
+	}
 
 	if pred.Metrics != nil {
 		t.Error("expected nil metrics for nil input")
@@ -963,10 +967,14 @@ func TestCreateActionAttestation_AgentIdentityWithoutBinary(t *testing.T) {
 
 	payloadBytes, _ := base64.StdEncoding.DecodeString(env.Payload)
 	var stmt Statement
-	json.Unmarshal(payloadBytes, &stmt)
+	if err := json.Unmarshal(payloadBytes, &stmt); err != nil {
+		t.Fatalf("unmarshal statement: %v", err)
+	}
 	predicateJSON, _ := json.Marshal(stmt.Predicate)
 	var pred ActionPredicate
-	json.Unmarshal(predicateJSON, &pred)
+	if err := json.Unmarshal(predicateJSON, &pred); err != nil {
+		t.Fatalf("unmarshal predicate: %v", err)
+	}
 
 	if pred.AgentIdentity == nil {
 		t.Fatal("agentIdentity should not be nil")
