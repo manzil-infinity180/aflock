@@ -85,6 +85,21 @@ func (e *Evaluator) EvaluatePreToolUse(toolName string, toolInput json.RawMessag
 		}
 	}
 
+	// 3b. Check Bash commands for file-reading operations against files.deny.
+	// This catches "cat restricted/credentials.json" which bypasses the file
+	// access check above because isFileOperation("Bash") is false.
+	if toolName == "Bash" && e.policy.Files != nil && len(e.policy.Files.Deny) > 0 {
+		var input aflock.BashToolInput
+		if err := json.Unmarshal(toolInput, &input); err == nil && input.Command != "" {
+			fileArgs := e.bashAnalyzer.ExtractFileArgs(input.Command)
+			for _, filePath := range fileArgs {
+				if decision, reason := e.evaluateBashFilePathDeny(filePath); decision != aflock.DecisionAllow {
+					return decision, reason
+				}
+			}
+		}
+	}
+
 	// 4. Check domain access for network tools
 	// WebSearch doesn't have a target URL (only a search query), so domain
 	// restrictions don't apply — the search engine itself picks which sites
@@ -331,6 +346,18 @@ func (e *Evaluator) filePathVariants(filePath string) []string {
 		if err == nil && relPath != filePath && !strings.HasPrefix(relPath, "..") {
 			variants = append(variants, relPath)
 		}
+
+		// Security: resolve symlinks to catch path traversal via symlinked files.
+		// If the resolved path differs from the original, add it and its relative
+		// form as additional variants so deny patterns match the real target.
+		resolved, err := filepath.EvalSymlinks(absPath)
+		if err == nil && resolved != absPath {
+			variants = append(variants, resolved, filepath.Base(resolved))
+			resolvedRel, err := filepath.Rel(e.projectRoot, resolved)
+			if err == nil && !strings.HasPrefix(resolvedRel, "..") {
+				variants = append(variants, resolvedRel)
+			}
+		}
 	}
 
 	return variants
@@ -444,6 +471,23 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 
 		if !allowed {
 			return aflock.DecisionDeny, fmt.Sprintf("File '%s' not in allow list", filePath)
+		}
+	}
+
+	return aflock.DecisionAllow, ""
+}
+
+// evaluateBashFilePathDeny checks a file path from a Bash command against
+// files.deny patterns only. We intentionally skip files.allow here — enforcing
+// an allow list would break legitimate tools (grep, git, build commands) that
+// access many files. The threat model is to block known-sensitive files.
+func (e *Evaluator) evaluateBashFilePathDeny(filePath string) (aflock.PermissionDecision, string) {
+	variants := e.filePathVariants(filePath)
+
+	for _, pattern := range e.policy.Files.Deny {
+		if e.matchFilePattern(pattern, variants) {
+			return aflock.DecisionDeny, fmt.Sprintf(
+				"Bash command accesses file '%s' matching deny pattern '%s'", filePath, pattern)
 		}
 	}
 

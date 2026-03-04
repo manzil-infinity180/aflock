@@ -2,6 +2,7 @@
 package policy
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -522,4 +523,86 @@ func containsAnyWord(s string, words []string) bool {
 		}
 	}
 	return false
+}
+
+// fileReadingCommands is the set of common commands that read file contents.
+// Used to extract file arguments from Bash commands for deny-list checking.
+var fileReadingCommands = map[string]bool{
+	"cat": true, "head": true, "tail": true, "less": true, "more": true,
+	"xxd": true, "strings": true, "od": true, "hexdump": true, "file": true,
+	"wc": true, "stat": true, "base64": true, "tac": true, "nl": true,
+	"sort": true, "uniq": true, "cut": true,
+}
+
+// ExtractFileArgs extracts file path arguments from a bash command string.
+// It splits the command into sub-commands and pipeline segments, then parses
+// each for file-reading commands and collects their file arguments.
+func (a *BashAnalyzer) ExtractFileArgs(command string) []string {
+	seen := make(map[string]bool)
+	var result []string
+
+	addPath := func(p string) {
+		if p != "" && !seen[p] {
+			seen[p] = true
+			result = append(result, p)
+		}
+	}
+
+	// Process sub-commands (split on ;, &&, ||)
+	for _, subCmd := range splitShellCommands(command) {
+		// Also process pipeline segments within each sub-command
+		for _, seg := range splitPipeline(subCmd) {
+			for _, p := range extractFileArgsFromSingleCmd(seg) {
+				addPath(p)
+			}
+		}
+	}
+
+	return result
+}
+
+// extractFileArgsFromSingleCmd extracts file arguments from a single command
+// (no pipes, no chaining). It checks if the command is a file-reading command
+// and collects non-flag arguments as file paths.
+func extractFileArgsFromSingleCmd(cmd string) []string {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return nil
+	}
+
+	cmdName := extractCommandName(cmd)
+	if cmdName == "" {
+		return nil
+	}
+
+	// Check if the base name (without path) is a file-reading command
+	if !fileReadingCommands[filepath.Base(cmdName)] {
+		return nil
+	}
+
+	// Collect non-flag arguments as file paths
+	var paths []string
+	fields := strings.Fields(cmd)
+	pastCommand := false
+	for _, f := range fields {
+		// Skip variable assignments and command name
+		if !pastCommand {
+			if strings.Contains(f, "=") && !strings.HasPrefix(f, "-") && !strings.HasPrefix(f, "$") {
+				continue // skip env var assignment
+			}
+			pastCommand = true
+			continue // skip the command name itself
+		}
+		// Skip flags (e.g., -n, --lines, -20)
+		if strings.HasPrefix(f, "-") {
+			continue
+		}
+		// Skip shell redirections and special chars
+		if f == ">" || f == ">>" || f == "<" || f == "2>" || f == "2>>" || f == "&>" {
+			continue
+		}
+		paths = append(paths, f)
+	}
+
+	return paths
 }
