@@ -117,6 +117,22 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 
 	// Initialize session state
 	sessionState := h.stateManager.Initialize(input.SessionID, pol, policyPath)
+
+	// Check for propagation from a parent session (sublayout delegation).
+	// If found, inherit materials and attenuate limits.
+	if prop, propErr := h.stateManager.ReadPropagation(policyPath); propErr != nil {
+		fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to read propagation: %v\n", propErr)
+	} else if prop != nil {
+		sessionState.ParentSessionID = prop.ParentSessionID
+		sessionState.Materials = prop.Materials
+		if prop.ParentLimits != nil && prop.ParentMetrics != nil {
+			sessionState.Policy.Limits = attenuateLimits(
+				sessionState.Policy.Limits, prop.ParentLimits, prop.ParentMetrics)
+		}
+		fmt.Fprintf(os.Stderr, "[aflock] Inherited %d materials from parent session %s\n",
+			len(prop.Materials), prop.ParentSessionID)
+	}
+
 	if err := h.stateManager.Save(sessionState); err != nil {
 		output.ExitWithWarning(fmt.Sprintf("Failed to save session state: %v", err))
 		return nil
@@ -272,6 +288,14 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 		output.ExitWithWarning(fmt.Sprintf("Failed to save session state: %v", err))
 	}
 
+	// If this is a subagent spawn, write propagation file so the child
+	// session inherits materials and attenuated limits (Section 5: sublayout delegation).
+	if isSubagentSpawn(input.ToolName) && sessionState.PolicyPath != "" {
+		if err := h.stateManager.WritePropagation(sessionState); err != nil {
+			fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to write propagation: %v\n", err)
+		}
+	}
+
 	// Return decision as proper JSON response
 	switch decision {
 	case aflock.DecisionDeny:
@@ -395,9 +419,42 @@ func (h *Handler) handleStop(input *aflock.HookInput) error {
 	return output.Write(output.StopAllow())
 }
 
-// handleSubagentStop checks sublayout constraints.
-func (h *Handler) handleSubagentStop(_ *aflock.HookInput) error {
-	// Similar to Stop, but for subagents
+// handleSubagentStop merges the child session's actions, metrics, and materials
+// back into the parent session and checks post-hoc limits on the child.
+func (h *Handler) handleSubagentStop(input *aflock.HookInput) error {
+	// Load child session state
+	if input.SessionID == "" {
+		return output.Write(output.StopAllow())
+	}
+	childState, err := h.stateManager.Load(input.SessionID)
+	if err != nil || childState == nil {
+		return output.Write(output.StopAllow())
+	}
+
+	// If child has a parent, merge results back
+	if childState.ParentSessionID != "" {
+		parentState, loadErr := h.stateManager.Load(childState.ParentSessionID)
+		if loadErr != nil {
+			fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to load parent session %s: %v\n",
+				childState.ParentSessionID, loadErr)
+		} else if parentState != nil {
+			mergeChildIntoParent(parentState, childState)
+			if saveErr := h.stateManager.Save(parentState); saveErr != nil {
+				fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to save parent session: %v\n", saveErr)
+			}
+		}
+	}
+
+	// Check post-hoc limits on the child session
+	if childState.Policy != nil && childState.Policy.Limits != nil {
+		evaluator := policy.NewEvaluator(childState.Policy, filepath.Dir(childState.PolicyPath))
+		exceeded, limitName, msg := evaluator.CheckLimits(childState.Metrics, "post-hoc")
+		if exceeded {
+			return output.Write(output.StopBlock(
+				fmt.Sprintf("[aflock] Subagent limit exceeded: %s - %s", limitName, msg)))
+		}
+	}
+
 	return output.Write(output.StopAllow())
 }
 
@@ -521,6 +578,98 @@ func attestationMatchesName(path, name string) bool {
 	}
 
 	return strings.EqualFold(predicate.ToolName, name) || strings.EqualFold(predicate.Action, name)
+}
+
+// isSubagentSpawn returns true if the tool triggers a subagent spawn.
+func isSubagentSpawn(toolName string) bool {
+	return toolName == "Agent" || toolName == "Task"
+}
+
+// attenuateLimits computes effective limits for a child session.
+// For each limit field: child effective = min(child policy limit, parent remaining).
+// If a parent has exhausted its budget, the child gets 0.
+func attenuateLimits(childLimits, parentLimits *aflock.LimitsPolicy, parentMetrics *aflock.SessionMetrics) *aflock.LimitsPolicy {
+	if parentLimits == nil {
+		return childLimits
+	}
+
+	result := &aflock.LimitsPolicy{}
+	if childLimits != nil {
+		*result = *childLimits
+	}
+
+	attenuate := func(childLimit, parentLimit *aflock.Limit, parentUsed float64) *aflock.Limit {
+		if parentLimit == nil {
+			return childLimit
+		}
+		remaining := parentLimit.Value - parentUsed
+		if remaining < 0 {
+			remaining = 0
+		}
+		enforcement := parentLimit.Enforcement
+		if childLimit != nil {
+			if childLimit.Value < remaining {
+				remaining = childLimit.Value
+			}
+			if childLimit.Enforcement != "" {
+				enforcement = childLimit.Enforcement
+			}
+		}
+		return &aflock.Limit{Value: remaining, Enforcement: enforcement}
+	}
+
+	result.MaxSpendUSD = attenuate(result.MaxSpendUSD, parentLimits.MaxSpendUSD, parentMetrics.CostUSD)
+	result.MaxTokensIn = attenuate(result.MaxTokensIn, parentLimits.MaxTokensIn, float64(parentMetrics.TokensIn))
+	result.MaxTokensOut = attenuate(result.MaxTokensOut, parentLimits.MaxTokensOut, float64(parentMetrics.TokensOut))
+	result.MaxTurns = attenuate(result.MaxTurns, parentLimits.MaxTurns, float64(parentMetrics.Turns))
+	result.MaxToolCalls = attenuate(result.MaxToolCalls, parentLimits.MaxToolCalls, float64(parentMetrics.ToolCalls))
+	// MaxWallTimeSeconds is per-session, not inherited
+	if childLimits != nil {
+		result.MaxWallTimeSeconds = childLimits.MaxWallTimeSeconds
+	}
+
+	return result
+}
+
+// mergeChildIntoParent merges the child session's actions, metrics, and
+// materials back into the parent session state.
+func mergeChildIntoParent(parent, child *aflock.SessionState) {
+	// Annotate and append child actions
+	for _, action := range child.Actions {
+		annotated := action
+		annotated.Reason = fmt.Sprintf("[subagent:%s] %s", child.SessionID, action.Reason)
+		parent.Actions = append(parent.Actions, annotated)
+	}
+
+	// Add child metrics to parent
+	if child.Metrics != nil && parent.Metrics != nil {
+		parent.Metrics.TokensIn += child.Metrics.TokensIn
+		parent.Metrics.TokensOut += child.Metrics.TokensOut
+		parent.Metrics.CostUSD += child.Metrics.CostUSD
+		parent.Metrics.ToolCalls += child.Metrics.ToolCalls
+		for tool, count := range child.Metrics.Tools {
+			if parent.Metrics.Tools == nil {
+				parent.Metrics.Tools = make(map[string]int)
+			}
+			parent.Metrics.Tools[tool] += count
+		}
+	}
+
+	// Merge child materials into parent (deduplicated by label+source)
+	existing := make(map[string]bool)
+	for _, m := range parent.Materials {
+		existing[m.Label+"\x00"+m.Source] = true
+	}
+	for _, m := range child.Materials {
+		key := m.Label + "\x00" + m.Source
+		if !existing[key] {
+			parent.Materials = append(parent.Materials, m)
+			existing[key] = true
+		}
+	}
+
+	// Track child session ID
+	parent.ChildSessionIDs = append(parent.ChildSessionIDs, child.SessionID)
 }
 
 func isFileOperation(toolName string) bool {
