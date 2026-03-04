@@ -440,6 +440,27 @@ type SessionState struct {
 	Actions    []ActionRecord  `json:"actions,omitempty"`
 	// Materials tracks accessed data sources with their classifications for provenance
 	Materials []MaterialClassification `json:"materials,omitempty"`
+	// ParentSessionID is set when this session was spawned by a parent agent
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	// ChildSessionIDs tracks subagent sessions spawned from this session
+	ChildSessionIDs []string `json:"child_session_ids,omitempty"`
+}
+
+// PropagationRecord is written by a parent session's PreToolUse(Agent) hook
+// and consumed by the child session's SessionStart hook, enabling material
+// and limit inheritance across subagent boundaries.
+type PropagationRecord struct {
+	ParentSessionID string                   `json:"parent_session_id"`
+	PolicyPath      string                   `json:"policy_path"`
+	Materials       []MaterialClassification `json:"materials"`
+	ParentMetrics   *SessionMetrics          `json:"parent_metrics"`
+	ParentLimits    *LimitsPolicy            `json:"parent_limits,omitempty"`
+	CreatedAt       time.Time                `json:"created_at"`
+}
+
+// IsExpiredPropagation checks if the propagation record has exceeded the given TTL.
+func (p *PropagationRecord) IsExpiredPropagation(ttl time.Duration) bool {
+	return time.Since(p.CreatedAt) > ttl
 }
 
 // SessionMetrics tracks cumulative metrics.
