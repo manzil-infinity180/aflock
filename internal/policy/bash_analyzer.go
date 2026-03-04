@@ -332,7 +332,7 @@ func detectInterpreterExec(command string) bool {
 		"node":    {"-e", "--eval"},
 		"php":     {"-r"},
 		"lua":     {"-e"},
-		"awk":     {""},  // awk itself can execute arbitrary code
+		"awk":     {""}, // awk itself can execute arbitrary code
 		"gawk":    {""},
 	}
 
