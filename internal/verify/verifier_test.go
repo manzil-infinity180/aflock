@@ -2231,8 +2231,9 @@ func TestVerifyDSSESignatures_ValidSig_NoFunctionaries(t *testing.T) {
 	}
 
 	sigs := []struct {
-		KeyID string `json:"keyid"`
-		Sig   string `json:"sig"`
+		KeyID       string `json:"keyid"`
+		Sig         string `json:"sig"`
+		Certificate string `json:"certificate,omitempty"`
 	}{
 		{KeyID: "test-key", Sig: base64.StdEncoding.EncodeToString(sig)},
 	}
@@ -2261,8 +2262,9 @@ func TestVerifyDSSESignatures_InvalidSig(t *testing.T) {
 	sig, _ := ecdsa.SignASN1(rand.Reader, wrongKey, hash[:])
 
 	sigs := []struct {
-		KeyID string `json:"keyid"`
-		Sig   string `json:"sig"`
+		KeyID       string `json:"keyid"`
+		Sig         string `json:"sig"`
+		Certificate string `json:"certificate,omitempty"`
 	}{
 		{KeyID: "wrong-key", Sig: base64.StdEncoding.EncodeToString(sig)},
 	}
@@ -2291,8 +2293,9 @@ func TestVerifyDSSESignatures_FunctionaryKeyID_Match(t *testing.T) {
 	sig, _ := ecdsa.SignASN1(rand.Reader, caKey, hash[:])
 
 	sigs := []struct {
-		KeyID string `json:"keyid"`
-		Sig   string `json:"sig"`
+		KeyID       string `json:"keyid"`
+		Sig         string `json:"sig"`
+		Certificate string `json:"certificate,omitempty"`
 	}{
 		{KeyID: "spiffe://aflock.ai/agent/test", Sig: base64.StdEncoding.EncodeToString(sig)},
 	}
@@ -2323,8 +2326,9 @@ func TestVerifyDSSESignatures_FunctionaryKeyID_Mismatch(t *testing.T) {
 	sig, _ := ecdsa.SignASN1(rand.Reader, caKey, hash[:])
 
 	sigs := []struct {
-		KeyID string `json:"keyid"`
-		Sig   string `json:"sig"`
+		KeyID       string `json:"keyid"`
+		Sig         string `json:"sig"`
+		Certificate string `json:"certificate,omitempty"`
 	}{
 		{KeyID: "spiffe://aflock.ai/agent/actual", Sig: base64.StdEncoding.EncodeToString(sig)},
 	}
@@ -2349,8 +2353,9 @@ func TestVerifyDSSESignatures_BadBase64Sig(t *testing.T) {
 	payloadType := "test/type"
 
 	sigs := []struct {
-		KeyID string `json:"keyid"`
-		Sig   string `json:"sig"`
+		KeyID       string `json:"keyid"`
+		Sig         string `json:"sig"`
+		Certificate string `json:"certificate,omitempty"`
 	}{
 		{KeyID: "k", Sig: "!!!not-base64!!!"},
 	}
@@ -2367,8 +2372,9 @@ func TestVerifyDSSESignatures_EmptySigs(t *testing.T) {
 	caCert, _ := generateTestCA(t)
 
 	sigs := []struct {
-		KeyID string `json:"keyid"`
-		Sig   string `json:"sig"`
+		KeyID       string `json:"keyid"`
+		Sig         string `json:"sig"`
+		Certificate string `json:"certificate,omitempty"`
 	}{}
 
 	step := &aflock.Step{Name: "test"}
