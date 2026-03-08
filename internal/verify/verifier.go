@@ -615,8 +615,9 @@ func (v *Verifier) verifyStepAttestation(attestPath string, step *aflock.Step, p
 		PayloadType string `json:"payloadType"`
 		Payload     string `json:"payload"`
 		Signatures  []struct {
-			KeyID string `json:"keyid"`
-			Sig   string `json:"sig"`
+			KeyID       string `json:"keyid"`
+			Sig         string `json:"sig"`
+			Certificate string `json:"certificate,omitempty"`
 		} `json:"signatures"`
 	}
 	if err := json.Unmarshal(data, &envelope); err != nil {
@@ -701,8 +702,9 @@ func (v *Verifier) verifyStepAttestation(attestPath string, step *aflock.Step, p
 // Signatures are verified against leaf certificates (from the envelope or matched by KeyID),
 // and the leaf certificate chain is validated up to a trusted root.
 func verifyDSSESignatures(payloadType string, payload []byte, signatures []struct {
-	KeyID string `json:"keyid"`
-	Sig   string `json:"sig"`
+	KeyID       string `json:"keyid"`
+	Sig         string `json:"sig"`
+	Certificate string `json:"certificate,omitempty"`
 }, trustedCerts []*x509.Certificate, step *aflock.Step) error {
 	// Create PAE (Pre-Authentication Encoding)
 	pae := fmt.Sprintf("DSSEv1 %d %s %d ", len(payloadType), payloadType, len(payload))
@@ -723,7 +725,18 @@ func verifyDSSESignatures(payloadType string, payload []byte, signatures []struc
 
 		// Collect candidate verification certs: trusted certs themselves (for self-signed/direct trust)
 		// plus any leaf certs embedded in the signature
-		candidates := trustedCerts
+		candidates := make([]*x509.Certificate, len(trustedCerts))
+		copy(candidates, trustedCerts)
+
+		// Parse leaf certificate from the signature if present
+		if sig.Certificate != "" {
+			block, _ := pem.Decode([]byte(sig.Certificate))
+			if block != nil {
+				if leafCert, err := x509.ParseCertificate(block.Bytes); err == nil {
+					candidates = append(candidates, leafCert)
+				}
+			}
+		}
 
 		// Verify the signature against each candidate cert
 		for _, cert := range candidates {
