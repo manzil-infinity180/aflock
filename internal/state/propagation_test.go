@@ -30,7 +30,7 @@ func testParentState() *aflock.SessionState {
 			Name:    "test-policy",
 			Version: "1.0",
 			Limits: &aflock.LimitsPolicy{
-				MaxSpendUSD: &aflock.Limit{Value: 1.0, Enforcement: "fail-fast"},
+				MaxSpendUSD:  &aflock.Limit{Value: 1.0, Enforcement: "fail-fast"},
 				MaxToolCalls: &aflock.Limit{Value: 50, Enforcement: "post-hoc"},
 			},
 		},
@@ -224,7 +224,7 @@ func TestPropagation_CleanStalePropagation(t *testing.T) {
 	stalePath := filepath.Join(dir, "stale.json")
 	os.WriteFile(stalePath, []byte("{}"), 0600)
 	staleTime := time.Now().Add(-3 * PropagationTTL)
-	os.Chtimes(stalePath, staleTime, staleTime)
+	os.Chtimes(stalePath, staleTime, staleTime) //nolint:errcheck
 
 	// Create a "fresh" file
 	freshPath := filepath.Join(dir, "fresh.json")

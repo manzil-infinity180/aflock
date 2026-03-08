@@ -18,11 +18,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/aflock-ai/aflock/internal/hooks"
-	"github.com/aflock-ai/aflock/pkg/aflock"
 	"github.com/aflock-ai/aflock/internal/mcp"
 	"github.com/aflock-ai/aflock/internal/plan"
 	"github.com/aflock-ai/aflock/internal/policy"
 	"github.com/aflock-ai/aflock/internal/verify"
+	"github.com/aflock-ai/aflock/pkg/aflock"
 )
 
 var (

@@ -213,11 +213,11 @@ func TestSublayout_SessionStartInheritsMaterials(t *testing.T) {
 
 func TestSublayout_LimitAttenuation(t *testing.T) {
 	tests := []struct {
-		name           string
-		childLimit     *aflock.Limit
-		parentLimit    *aflock.Limit
-		parentUsed     float64
-		wantEffective  float64
+		name          string
+		childLimit    *aflock.Limit
+		parentLimit   *aflock.Limit
+		parentUsed    float64
+		wantEffective float64
 	}{
 		{
 			name:          "child has no limit, parent has limit",
@@ -413,7 +413,7 @@ func TestSublayout_SubagentStopNoParent(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	json.Unmarshal([]byte(got), &out) //nolint:errcheck
 	if out.Decision == "block" {
 		t.Error("orphan child should be allowed to stop")
 	}
@@ -430,7 +430,7 @@ func TestSublayout_SubagentStopNoSession(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	json.Unmarshal([]byte(got), &out) //nolint:errcheck
 	if out.Decision == "block" {
 		t.Error("no session should be allowed to stop")
 	}
@@ -526,7 +526,7 @@ func TestSublayout_NestedPropagation(t *testing.T) {
 	seedSession(t, h, "agent-A", pol)
 
 	captureStdout(t, func() {
-		h.handlePreToolUse(&aflock.HookInput{
+		h.handlePreToolUse(&aflock.HookInput{ //nolint:errcheck
 			SessionID: "agent-A",
 			ToolName:  "Read",
 			ToolInput: json.RawMessage(`{"file_path": "/project/internal/deep-secret.go"}`),
@@ -534,7 +534,7 @@ func TestSublayout_NestedPropagation(t *testing.T) {
 	})
 
 	captureStdout(t, func() {
-		h.handlePreToolUse(&aflock.HookInput{
+		h.handlePreToolUse(&aflock.HookInput{ //nolint:errcheck
 			SessionID: "agent-A",
 			ToolName:  "Agent",
 			ToolInput: json.RawMessage(`{"prompt":"delegate to B"}`),
@@ -553,7 +553,7 @@ func TestSublayout_NestedPropagation(t *testing.T) {
 
 	// B spawns C
 	captureStdout(t, func() {
-		h.handlePreToolUse(&aflock.HookInput{
+		h.handlePreToolUse(&aflock.HookInput{ //nolint:errcheck
 			SessionID: "agent-B",
 			ToolName:  "Agent",
 			ToolInput: json.RawMessage(`{"prompt":"delegate to C"}`),
@@ -577,7 +577,7 @@ func TestSublayout_NestedPropagation(t *testing.T) {
 
 	// C tries to write to public -> DENIED
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(&aflock.HookInput{
+		h.handlePreToolUse(&aflock.HookInput{ //nolint:errcheck
 			SessionID: "agent-C",
 			ToolName:  "Write",
 			ToolInput: json.RawMessage(`{"file_path": "/project/public/leak.txt", "content": "secret"}`),
@@ -585,7 +585,7 @@ func TestSublayout_NestedPropagation(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	json.Unmarshal([]byte(got), &out) //nolint:errcheck
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionDeny {
 		t.Errorf("SECURITY: nested child C should be DENIED writing to public. Got: %v",
 			out.HookSpecificOutput.PermissionDecision)
@@ -613,11 +613,11 @@ func TestSublayout_NoDataFlowPolicy_NoRegression(t *testing.T) {
 		ToolInput: json.RawMessage(`{"prompt":"test"}`),
 	}
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(agentInput)
+		h.handlePreToolUse(agentInput) //nolint:errcheck
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	json.Unmarshal([]byte(got), &out) //nolint:errcheck
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("Agent should be allowed without DataFlow policy, got %v",
 			out.HookSpecificOutput.PermissionDecision)
@@ -639,10 +639,10 @@ func TestSublayout_NoDataFlowPolicy_NoRegression(t *testing.T) {
 		ToolInput: json.RawMessage(`{"file_path": "/project/public/out.txt", "content": "ok"}`),
 	}
 	got = captureStdout(t, func() {
-		h.handlePreToolUse(writeInput)
+		h.handlePreToolUse(writeInput) //nolint:errcheck
 	})
 
-	json.Unmarshal([]byte(got), &out)
+	json.Unmarshal([]byte(got), &out) //nolint:errcheck
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("write should be allowed without DataFlow, got %v",
 			out.HookSpecificOutput.PermissionDecision)
@@ -697,7 +697,7 @@ func TestMergeChildIntoParent(t *testing.T) {
 			Tools:     map[string]int{"Read": 1, "Write": 1},
 		},
 		Materials: []aflock.MaterialClassification{
-			{Label: "internal", Source: "Read:/a"},      // duplicate
+			{Label: "internal", Source: "Read:/a"},     // duplicate
 			{Label: "pii", Source: "Read:/data/users"}, // new
 		},
 		Actions: []aflock.ActionRecord{

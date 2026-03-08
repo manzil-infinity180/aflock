@@ -12,11 +12,11 @@ import (
 
 // ParsedPlan represents structured data extracted from a Claude plan markdown file.
 type ParsedPlan struct {
-	Name               string        // Plan name from the first H1 heading
-	DeterministicSteps []StepDef     // Steps like lint, test, build with commands
-	UATSteps           []UATStepDef  // UAT steps with AI evaluator prompts
-	FilesModified      []string      // File paths mentioned in the plan
-	AcceptanceCriteria []string      // Raw acceptance criteria text
+	Name               string       // Plan name from the first H1 heading
+	DeterministicSteps []StepDef    // Steps like lint, test, build with commands
+	UATSteps           []UATStepDef // UAT steps with AI evaluator prompts
+	FilesModified      []string     // File paths mentioned in the plan
+	AcceptanceCriteria []string     // Raw acceptance criteria text
 }
 
 // StepDef defines a deterministic verification step.
