@@ -49,9 +49,19 @@ func Parse(content string) (*ParsedPlan, error) {
 	var currentSection string
 	var inTable bool
 	var tableHeaders []string
+	var pendingLine string // line returned by scanForPrompt that needs re-processing
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		var line string
+		if pendingLine != "" {
+			line = pendingLine
+			pendingLine = ""
+		} else {
+			if !scanner.Scan() {
+				break
+			}
+			line = scanner.Text()
+		}
 		trimmed := strings.TrimSpace(line)
 
 		// Extract plan name from first H1
@@ -70,12 +80,15 @@ func Parse(content string) (*ParsedPlan, error) {
 			heading := extractHeadingText(trimmed)
 			if strings.HasPrefix(heading, "uat-") {
 				// Next lines might contain the prompt
-				prompt := scanForPrompt(scanner)
+				prompt, unconsumed := scanForPrompt(scanner)
 				if prompt != "" {
 					plan.UATSteps = append(plan.UATSteps, UATStepDef{
 						Name:   heading,
 						Prompt: prompt,
 					})
+				}
+				if unconsumed != "" {
+					pendingLine = unconsumed
 				}
 			}
 			continue
@@ -99,7 +112,7 @@ func Parse(content string) (*ParsedPlan, error) {
 		// Parse table rows
 		if inTable && strings.Contains(trimmed, "|") {
 			cols := parseTableRow(trimmed)
-			parseTableRowIntoplan(plan, tableHeaders, cols)
+			parseTableRowIntoPlan(plan, tableHeaders, cols)
 			continue
 		}
 
@@ -227,7 +240,9 @@ func extractHeadingText(heading string) string {
 }
 
 // scanForPrompt reads ahead to find an AI policy prompt after a UAT heading.
-func scanForPrompt(scanner *bufio.Scanner) string {
+// It returns the prompt (if found) and any unconsumed line that should be
+// re-processed by the caller (e.g. a heading that belongs to the next section).
+func scanForPrompt(scanner *bufio.Scanner) (string, string) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -239,19 +254,20 @@ func scanForPrompt(scanner *bufio.Scanner) string {
 			if idx := strings.Index(line, ":"); idx != -1 {
 				prompt := strings.TrimSpace(line[idx+1:])
 				prompt = strings.Trim(prompt, "\"'")
-				return prompt
+				return prompt, ""
 			}
 		}
 		// If line starts with "PASS if" or is a quoted string, treat as prompt
 		if strings.HasPrefix(line, "PASS if") || strings.HasPrefix(line, "\"PASS") {
-			return strings.Trim(line, "\"'")
+			return strings.Trim(line, "\"'"), ""
 		}
-		// If we hit another heading or non-prompt content, stop
+		// If we hit another heading or non-prompt content, stop and return
+		// the unconsumed line so the caller can re-process it
 		if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") || strings.HasPrefix(line, "*") {
-			break
+			return "", line
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // parseTableRow splits a markdown table row into column values.
@@ -287,8 +303,8 @@ func isTableSeparator(line string) bool {
 	return cleaned == ""
 }
 
-// parseTableRowIntoplan parses a table row into the plan based on column headers.
-func parseTableRowIntoplan(plan *ParsedPlan, headers, cols []string) {
+// parseTableRowIntoPlan parses a table row into the plan based on column headers.
+func parseTableRowIntoPlan(plan *ParsedPlan, headers, cols []string) {
 	if len(cols) == 0 {
 		return
 	}

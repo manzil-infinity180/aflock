@@ -205,6 +205,56 @@ func TestParse_EmptyContent(t *testing.T) {
 	}
 }
 
+func TestParse_ScanForPromptDoesNotConsumeNextHeading(t *testing.T) {
+	// When a UAT heading has no prompt, scanForPrompt should return the next
+	// heading as an unconsumed line so it gets re-processed. Previously,
+	// scanForPrompt consumed the "### uat-inbox" heading while scanning for
+	// uat-empty's prompt, causing uat-inbox to be silently dropped.
+	content := `# Email Client
+
+## UAT Scenarios
+
+### uat-empty
+Some text without a prompt
+
+### uat-inbox
+**AI Policy Prompt**: PASS if inbox shows emails
+
+### uat-compose
+**AI Policy Prompt**: PASS if compose window shows fields
+`
+
+	plan, err := Parse(content)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if len(plan.UATSteps) != 2 {
+		t.Fatalf("UATSteps = %d, want 2; got %+v", len(plan.UATSteps), plan.UATSteps)
+	}
+
+	// uat-empty has no prompt, so it should NOT appear in UATSteps
+	for _, step := range plan.UATSteps {
+		if step.Name == "uat-empty" {
+			t.Errorf("uat-empty should not be in UATSteps (it has no prompt), got %+v", step)
+		}
+	}
+
+	if plan.UATSteps[0].Name != "uat-inbox" {
+		t.Errorf("UAT[0].Name = %q, want %q", plan.UATSteps[0].Name, "uat-inbox")
+	}
+	if plan.UATSteps[0].Prompt != "PASS if inbox shows emails" {
+		t.Errorf("UAT[0].Prompt = %q, want %q", plan.UATSteps[0].Prompt, "PASS if inbox shows emails")
+	}
+
+	if plan.UATSteps[1].Name != "uat-compose" {
+		t.Errorf("UAT[1].Name = %q, want %q", plan.UATSteps[1].Name, "uat-compose")
+	}
+	if plan.UATSteps[1].Prompt != "PASS if compose window shows fields" {
+		t.Errorf("UAT[1].Prompt = %q, want %q", plan.UATSteps[1].Prompt, "PASS if compose window shows fields")
+	}
+}
+
 func TestParse_RealWorldPlan(t *testing.T) {
 	// Simulates a real Claude plan with mixed content
 	content := `# Add Search Feature to Todo App

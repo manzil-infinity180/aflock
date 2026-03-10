@@ -460,9 +460,13 @@ Examples:
 			var mergePolicy *aflock.Policy
 			if _, err := os.Stat(planOutput); err == nil {
 				data, err := os.ReadFile(planOutput)
-				if err == nil {
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: --merge: could not read %s: %v\n", planOutput, err)
+				} else {
 					var pol aflock.Policy
-					if err := json.Unmarshal(data, &pol); err == nil {
+					if err := json.Unmarshal(data, &pol); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: --merge: could not parse %s: %v\n", planOutput, err)
+					} else {
 						mergePolicy = &pol
 					}
 				}
@@ -495,14 +499,6 @@ Examples:
 		fmt.Fprintf(os.Stderr, "  2. Sign the policy:    aflock sign %s\n", outputPath)
 		fmt.Fprintln(os.Stderr, "  3. Implement the feature with Claude")
 		fmt.Fprintf(os.Stderr, "  4. Verify attestations: aflock verify --policy %s\n", outputPath)
-
-		// Also output the policy JSON to stdout for piping
-		data, err := plan.GeneratePolicyJSON(parsed, opts)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to generate JSON: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println(string(data))
 	},
 }
 
