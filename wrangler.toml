@@ -1,0 +1,10 @@
+# Cloudflare Pages configuration
+name = "aflock"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "docs-website/build"
+
+# Build is handled in GitHub Actions, not by Cloudflare
+# This file is for reference and local wrangler deployments
+
+# Production branch
+production_branch = "main"

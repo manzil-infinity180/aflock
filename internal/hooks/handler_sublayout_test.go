@@ -213,11 +213,11 @@ func TestSublayout_SessionStartInheritsMaterials(t *testing.T) {
 
 func TestSublayout_LimitAttenuation(t *testing.T) {
 	tests := []struct {
-		name           string
-		childLimit     *aflock.Limit
-		parentLimit    *aflock.Limit
-		parentUsed     float64
-		wantEffective  float64
+		name          string
+		childLimit    *aflock.Limit
+		parentLimit   *aflock.Limit
+		parentUsed    float64
+		wantEffective float64
 	}{
 		{
 			name:          "child has no limit, parent has limit",
@@ -413,7 +413,9 @@ func TestSublayout_SubagentStopNoParent(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("failed to unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Error("orphan child should be allowed to stop")
 	}
@@ -430,7 +432,9 @@ func TestSublayout_SubagentStopNoSession(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("failed to unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Error("no session should be allowed to stop")
 	}
@@ -526,19 +530,23 @@ func TestSublayout_NestedPropagation(t *testing.T) {
 	seedSession(t, h, "agent-A", pol)
 
 	captureStdout(t, func() {
-		h.handlePreToolUse(&aflock.HookInput{
+		if err := h.handlePreToolUse(&aflock.HookInput{
 			SessionID: "agent-A",
 			ToolName:  "Read",
 			ToolInput: json.RawMessage(`{"file_path": "/project/internal/deep-secret.go"}`),
-		})
+		}); err != nil {
+			t.Errorf("handlePreToolUse failed: %v", err)
+		}
 	})
 
 	captureStdout(t, func() {
-		h.handlePreToolUse(&aflock.HookInput{
+		if err := h.handlePreToolUse(&aflock.HookInput{
 			SessionID: "agent-A",
 			ToolName:  "Agent",
 			ToolInput: json.RawMessage(`{"prompt":"delegate to B"}`),
-		})
+		}); err != nil {
+			t.Errorf("handlePreToolUse failed: %v", err)
+		}
 	})
 
 	// B starts, inherits A's materials
@@ -553,11 +561,13 @@ func TestSublayout_NestedPropagation(t *testing.T) {
 
 	// B spawns C
 	captureStdout(t, func() {
-		h.handlePreToolUse(&aflock.HookInput{
+		if err := h.handlePreToolUse(&aflock.HookInput{
 			SessionID: "agent-B",
 			ToolName:  "Agent",
 			ToolInput: json.RawMessage(`{"prompt":"delegate to C"}`),
-		})
+		}); err != nil {
+			t.Errorf("handlePreToolUse failed: %v", err)
+		}
 	})
 
 	// C starts, should inherit B's materials (which include A's taint)
@@ -577,15 +587,19 @@ func TestSublayout_NestedPropagation(t *testing.T) {
 
 	// C tries to write to public -> DENIED
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(&aflock.HookInput{
+		if err := h.handlePreToolUse(&aflock.HookInput{
 			SessionID: "agent-C",
 			ToolName:  "Write",
 			ToolInput: json.RawMessage(`{"file_path": "/project/public/leak.txt", "content": "secret"}`),
-		})
+		}); err != nil {
+			t.Errorf("handlePreToolUse failed: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("failed to unmarshal output: %v", err)
+	}
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionDeny {
 		t.Errorf("SECURITY: nested child C should be DENIED writing to public. Got: %v",
 			out.HookSpecificOutput.PermissionDecision)
@@ -613,11 +627,15 @@ func TestSublayout_NoDataFlowPolicy_NoRegression(t *testing.T) {
 		ToolInput: json.RawMessage(`{"prompt":"test"}`),
 	}
 	got := captureStdout(t, func() {
-		h.handlePreToolUse(agentInput)
+		if err := h.handlePreToolUse(agentInput); err != nil {
+			t.Errorf("handlePreToolUse failed: %v", err)
+		}
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("failed to unmarshal output: %v", err)
+	}
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("Agent should be allowed without DataFlow policy, got %v",
 			out.HookSpecificOutput.PermissionDecision)
@@ -639,10 +657,14 @@ func TestSublayout_NoDataFlowPolicy_NoRegression(t *testing.T) {
 		ToolInput: json.RawMessage(`{"file_path": "/project/public/out.txt", "content": "ok"}`),
 	}
 	got = captureStdout(t, func() {
-		h.handlePreToolUse(writeInput)
+		if err := h.handlePreToolUse(writeInput); err != nil {
+			t.Errorf("handlePreToolUse failed: %v", err)
+		}
 	})
 
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("failed to unmarshal output: %v", err)
+	}
 	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionAllow {
 		t.Errorf("write should be allowed without DataFlow, got %v",
 			out.HookSpecificOutput.PermissionDecision)
@@ -697,7 +719,7 @@ func TestMergeChildIntoParent(t *testing.T) {
 			Tools:     map[string]int{"Read": 1, "Write": 1},
 		},
 		Materials: []aflock.MaterialClassification{
-			{Label: "internal", Source: "Read:/a"},      // duplicate
+			{Label: "internal", Source: "Read:/a"},     // duplicate
 			{Label: "pii", Source: "Read:/data/users"}, // new
 		},
 		Actions: []aflock.ActionRecord{
