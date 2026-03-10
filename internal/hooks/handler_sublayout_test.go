@@ -413,7 +413,9 @@ func TestSublayout_SubagentStopNoParent(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("failed to unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Error("orphan child should be allowed to stop")
 	}
@@ -430,7 +432,9 @@ func TestSublayout_SubagentStopNoSession(t *testing.T) {
 	})
 
 	var out aflock.HookOutput
-	json.Unmarshal([]byte(got), &out)
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("failed to unmarshal output: %v", err)
+	}
 	if out.Decision == "block" {
 		t.Error("no session should be allowed to stop")
 	}
