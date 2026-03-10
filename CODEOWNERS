@@ -1,0 +1,11 @@
+# Critical paths - require review from a code owner who didn't write the code
+# These paths enforce that at least one non-author maintainer reviews changes
+/internal/ @colek42 @fkautz
+/pkg/ @colek42 @fkautz
+/plugin/ @colek42 @fkautz
+/cmd/ @colek42 @fkautz
+/.github/ @colek42 @fkautz
+/Makefile @colek42 @fkautz
+
+# Non-critical paths (docs, examples, configs) have no CODEOWNERS requirement
+# Any collaborator can approve these PRs

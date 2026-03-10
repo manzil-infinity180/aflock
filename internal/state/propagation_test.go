@@ -224,7 +224,9 @@ func TestPropagation_CleanStalePropagation(t *testing.T) {
 	stalePath := filepath.Join(dir, "stale.json")
 	os.WriteFile(stalePath, []byte("{}"), 0600)
 	staleTime := time.Now().Add(-3 * PropagationTTL)
-	os.Chtimes(stalePath, staleTime, staleTime) //nolint:errcheck
+	if err := os.Chtimes(stalePath, staleTime, staleTime); err != nil {
+		t.Fatalf("failed to set file times: %v", err)
+	}
 
 	// Create a "fresh" file
 	freshPath := filepath.Join(dir, "fresh.json")
