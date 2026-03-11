@@ -4,6 +4,7 @@ package hooks
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -95,8 +96,13 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 	}
 
 	if err != nil {
-		// No policy found - this is OK, we just won't enforce
-		return output.WriteEmpty()
+		if errors.Is(err, policy.ErrPolicyNotFound) {
+			// No policy file exists — opt-in model, allow everything
+			return output.WriteEmpty()
+		}
+		// Policy file exists but is malformed — fail closed
+		output.ExitWithError(fmt.Sprintf("[aflock] Failed to load policy: %v", err))
+		return nil
 	}
 
 	// Discover agent identity
@@ -230,8 +236,13 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 		}
 
 		if loadErr != nil {
-			// No policy found - allow everything
-			return output.Write(output.PreToolUseAllow())
+			if errors.Is(loadErr, policy.ErrPolicyNotFound) {
+				// No policy file exists — opt-in model, allow everything
+				return output.Write(output.PreToolUseAllow())
+			}
+			// Policy file exists but is malformed — fail closed
+			return output.Write(output.PreToolUseDeny(
+				fmt.Sprintf("[aflock] Failed to load policy: %v", loadErr)))
 		}
 		// Create ephemeral session state
 		sessionState = h.stateManager.Initialize(input.SessionID, pol, policyPath)
