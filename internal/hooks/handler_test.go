@@ -1700,6 +1700,57 @@ func TestHandleSessionEnd_PostHocLimitExceeded_DoesNotBlock(t *testing.T) {
 	if got != "{}" {
 		t.Errorf("expected empty JSON from session end, got: %s", got)
 	}
+
+	// Verify the violation was recorded in session state for audit trail
+	ss2, err := h.stateManager.Load("session-posthoc-end")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	var found bool
+	for _, action := range ss2.Actions {
+		if action.ToolName == "SessionEnd" && action.Decision == string(aflock.DecisionDeny) {
+			if !strings.Contains(action.Reason, "post-hoc limit exceeded") {
+				t.Errorf("expected 'post-hoc limit exceeded' in reason, got: %s", action.Reason)
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected post-hoc limit violation to be recorded as a denied SessionEnd action")
+	}
+}
+
+func TestHandleSessionEnd_PostHocLimitNotExceeded_NoViolationRecorded(t *testing.T) {
+	h := newTestHandler(t)
+	pol := &aflock.Policy{
+		Name: "test-posthoc-ok",
+		Limits: &aflock.LimitsPolicy{
+			MaxTurns: &aflock.Limit{Value: 100, Enforcement: "post-hoc"},
+		},
+	}
+	ss := seedSession(t, h, "session-posthoc-ok", pol)
+	ss.Metrics.Turns = 5
+	h.stateManager.Save(ss)
+
+	input := &aflock.HookInput{SessionID: "session-posthoc-ok"}
+
+	captureStdout(t, func() {
+		if err := h.handleSessionEnd(input); err != nil {
+			t.Fatalf("handleSessionEnd: %v", err)
+		}
+	})
+
+	// Verify no violation action was recorded
+	ss2, err := h.stateManager.Load("session-posthoc-ok")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	for _, action := range ss2.Actions {
+		if action.ToolName == "SessionEnd" && action.Decision == string(aflock.DecisionDeny) {
+			t.Error("unexpected post-hoc violation recorded when limits not exceeded")
+		}
+	}
 }
 
 // ----- State persistence round-trip -----

@@ -485,8 +485,17 @@ func (h *Handler) handleSessionEnd(input *aflock.HookInput) error {
 		evaluator := policy.NewEvaluator(sessionState.Policy, filepath.Dir(sessionState.PolicyPath))
 		exceeded, limitName, msg := evaluator.CheckLimits(sessionState.Metrics, "post-hoc")
 		if exceeded {
-			// Log warning but don't block session end
 			fmt.Fprintf(os.Stderr, "[aflock] Post-hoc limit exceeded: %s - %s\n", limitName, msg)
+			// Record the violation in session state for audit trail
+			h.stateManager.RecordAction(sessionState, aflock.ActionRecord{
+				Timestamp: time.Now(),
+				ToolName:  "SessionEnd",
+				Decision:  string(aflock.DecisionDeny),
+				Reason:    fmt.Sprintf("post-hoc limit exceeded: %s - %s", limitName, msg),
+			})
+			if err := h.stateManager.Save(sessionState); err != nil {
+				fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to save session state: %v\n", err)
+			}
 		}
 	}
 
