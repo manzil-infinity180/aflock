@@ -701,6 +701,76 @@ func containsString(slice []string, item string) bool {
 	return false
 }
 
+// EvaluateGrants checks tool inputs against grants allow/deny patterns for
+// secrets, APIs, and storage. Each grant category uses simple substring and
+// glob matching against the serialized tool input string.
+func (e *Evaluator) EvaluateGrants(toolName string, toolInput json.RawMessage) (aflock.PermissionDecision, string) {
+	if e.policy.Grants == nil {
+		return aflock.DecisionAllow, ""
+	}
+
+	inputStr := string(toolInput)
+
+	// Check secrets grants
+	if e.policy.Grants.Secrets != nil {
+		if decision, reason := e.evaluateGrantCategory(inputStr, e.policy.Grants.Secrets, "secret"); decision != aflock.DecisionAllow {
+			return decision, reason
+		}
+	}
+
+	// Check API grants
+	if e.policy.Grants.APIs != nil {
+		if decision, reason := e.evaluateGrantCategory(inputStr, e.policy.Grants.APIs, "API"); decision != aflock.DecisionAllow {
+			return decision, reason
+		}
+	}
+
+	// Check storage grants
+	if e.policy.Grants.Storage != nil {
+		if decision, reason := e.evaluateGrantCategory(inputStr, e.policy.Grants.Storage, "storage"); decision != aflock.DecisionAllow {
+			return decision, reason
+		}
+	}
+
+	return aflock.DecisionAllow, ""
+}
+
+// evaluateGrantCategory checks a single grant category (secrets, APIs, or storage)
+// against the tool input string. Deny patterns are checked first; if allow patterns
+// exist, the input must match at least one.
+func (e *Evaluator) evaluateGrantCategory(inputStr string, adPolicy *aflock.AllowDenyPolicy, category string) (aflock.PermissionDecision, string) {
+	// Check deny patterns first
+	if matched, pattern := e.matchesAnyGrantPattern(inputStr, adPolicy.Deny); matched {
+		return aflock.DecisionDeny, fmt.Sprintf("tool input matches denied %s pattern: %s", category, pattern)
+	}
+
+	// Check allow patterns (if specified, input must match at least one)
+	if len(adPolicy.Allow) > 0 {
+		if matched, _ := e.matchesAnyGrantPattern(inputStr, adPolicy.Allow); !matched {
+			return aflock.DecisionDeny, fmt.Sprintf("tool input does not match any allowed %s pattern", category)
+		}
+	}
+
+	return aflock.DecisionAllow, ""
+}
+
+// matchesAnyGrantPattern checks if the input string matches any of the given patterns.
+// It uses both glob matching and substring matching to handle simple string patterns
+// (like API URLs or secret names) as well as glob patterns.
+func (e *Evaluator) matchesAnyGrantPattern(input string, patterns []string) (bool, string) {
+	for _, pattern := range patterns {
+		// Check glob match against the full input
+		if matched, _ := filepath.Match(pattern, input); matched {
+			return true, pattern
+		}
+		// Also check if pattern appears as a substring (for simple string patterns)
+		if strings.Contains(input, pattern) {
+			return true, pattern
+		}
+	}
+	return false, ""
+}
+
 // CheckLimits checks if cumulative metrics exceed policy limits.
 // Returns (exceeded, limitName, message).
 func (e *Evaluator) CheckLimits(metrics *aflock.SessionMetrics, enforcementMode string) (bool, string, string) {
