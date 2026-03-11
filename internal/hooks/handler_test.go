@@ -13,6 +13,12 @@ import (
 	"github.com/aflock-ai/aflock/pkg/aflock"
 )
 
+// validDSSEEnvelope returns a minimal structurally valid DSSE envelope JSON
+// suitable for tests that need attestation files to pass integrity validation.
+func validDSSEEnvelope() []byte {
+	return []byte(`{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json","signatures":[{"keyid":"test-key","sig":"dGVzdC1zaWduYXR1cmU="}]}`)
+}
+
 // newTestHandler creates a Handler with state rooted in a temp directory.
 func newTestHandler(t *testing.T) *Handler {
 	t.Helper()
@@ -876,7 +882,7 @@ func TestHandleStop_AttestationPresent_ExactFile(t *testing.T) {
 	// Create the attestation file in the attestations directory
 	attestDir := h.stateManager.AttestationsDir("session-attest-ok")
 	os.MkdirAll(attestDir, 0755)
-	os.WriteFile(filepath.Join(attestDir, "security-review.json"), []byte(`{"signed": true}`), 0644)
+	os.WriteFile(filepath.Join(attestDir, "security-review.json"), validDSSEEnvelope(), 0644)
 
 	input := &aflock.HookInput{
 		SessionID: "session-attest-ok",
@@ -909,7 +915,7 @@ func TestHandleStop_AttestationPresent_IntotoFile(t *testing.T) {
 
 	attestDir := h.stateManager.AttestationsDir("session-intoto")
 	os.MkdirAll(attestDir, 0755)
-	os.WriteFile(filepath.Join(attestDir, "build-step.intoto.json"), []byte(`{"signed": true}`), 0644)
+	os.WriteFile(filepath.Join(attestDir, "build-step.intoto.json"), validDSSEEnvelope(), 0644)
 
 	input := &aflock.HookInput{
 		SessionID: "session-intoto",
@@ -943,7 +949,7 @@ func TestHandleStop_AttestationFoundByContent(t *testing.T) {
 	attestDir := h.stateManager.AttestationsDir("session-content-match")
 	os.MkdirAll(attestDir, 0755)
 
-	// Create an intoto attestation with Bash as the toolName in the predicate
+	// Create a valid DSSE intoto attestation with Bash as the toolName in the predicate
 	predicate := map[string]interface{}{
 		"toolName": "Bash",
 		"action":   "execute",
@@ -953,7 +959,9 @@ func TestHandleStop_AttestationFoundByContent(t *testing.T) {
 	}
 	stmtBytes, _ := json.Marshal(statement)
 	envelope := map[string]interface{}{
-		"payload": base64.StdEncoding.EncodeToString(stmtBytes),
+		"payload":     base64.StdEncoding.EncodeToString(stmtBytes),
+		"payloadType": "application/vnd.in-toto+json",
+		"signatures":  []map[string]string{{"keyid": "test-key", "sig": "dGVzdA=="}},
 	}
 	envBytes, _ := json.Marshal(envelope)
 
@@ -1000,7 +1008,9 @@ func TestHandleStop_AttestationFoundByActionField(t *testing.T) {
 	}
 	stmtBytes, _ := json.Marshal(statement)
 	envelope := map[string]interface{}{
-		"payload": base64.StdEncoding.EncodeToString(stmtBytes),
+		"payload":     base64.StdEncoding.EncodeToString(stmtBytes),
+		"payloadType": "application/vnd.in-toto+json",
+		"signatures":  []map[string]string{{"keyid": "test-key", "sig": "dGVzdA=="}},
 	}
 	envBytes, _ := json.Marshal(envelope)
 
@@ -1037,8 +1047,8 @@ func TestHandleStop_MultipleAttestations_OneMissing(t *testing.T) {
 
 	attestDir := h.stateManager.AttestationsDir("session-multi")
 	os.MkdirAll(attestDir, 0755)
-	os.WriteFile(filepath.Join(attestDir, "build.json"), []byte(`{}`), 0644)
-	os.WriteFile(filepath.Join(attestDir, "test.json"), []byte(`{}`), 0644)
+	os.WriteFile(filepath.Join(attestDir, "build.json"), validDSSEEnvelope(), 0644)
+	os.WriteFile(filepath.Join(attestDir, "test.json"), validDSSEEnvelope(), 0644)
 	// "deploy" is missing
 
 	input := &aflock.HookInput{SessionID: "session-multi"}
@@ -1073,8 +1083,8 @@ func TestHandleStop_AllAttestationsPresent(t *testing.T) {
 
 	attestDir := h.stateManager.AttestationsDir("session-all-ok")
 	os.MkdirAll(attestDir, 0755)
-	os.WriteFile(filepath.Join(attestDir, "build.json"), []byte(`{}`), 0644)
-	os.WriteFile(filepath.Join(attestDir, "test.json"), []byte(`{}`), 0644)
+	os.WriteFile(filepath.Join(attestDir, "build.json"), validDSSEEnvelope(), 0644)
+	os.WriteFile(filepath.Join(attestDir, "test.json"), validDSSEEnvelope(), 0644)
 
 	input := &aflock.HookInput{SessionID: "session-all-ok"}
 
@@ -1301,7 +1311,7 @@ func TestFindAttestation_EmptyDir(t *testing.T) {
 
 func TestFindAttestation_ExactMatch(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "myattest.json"), []byte(`{}`), 0644)
+	os.WriteFile(filepath.Join(dir, "myattest.json"), validDSSEEnvelope(), 0644)
 	if !findAttestation(dir, "myattest") {
 		t.Error("expected true for exact .json match")
 	}
@@ -1309,7 +1319,7 @@ func TestFindAttestation_ExactMatch(t *testing.T) {
 
 func TestFindAttestation_IntotoMatch(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "step1.intoto.json"), []byte(`{}`), 0644)
+	os.WriteFile(filepath.Join(dir, "step1.intoto.json"), validDSSEEnvelope(), 0644)
 	if !findAttestation(dir, "step1") {
 		t.Error("expected true for exact .intoto.json match")
 	}
@@ -1318,12 +1328,14 @@ func TestFindAttestation_IntotoMatch(t *testing.T) {
 func TestFindAttestation_ContentMatch(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create an envelope whose payload's predicate has toolName "Build"
+	// Create a valid DSSE envelope whose payload's predicate has toolName "Build"
 	predicate := map[string]string{"toolName": "Build"}
 	stmt := map[string]interface{}{"predicate": predicate}
 	stmtBytes, _ := json.Marshal(stmt)
-	env := map[string]string{
-		"payload": base64.StdEncoding.EncodeToString(stmtBytes),
+	env := map[string]interface{}{
+		"payload":     base64.StdEncoding.EncodeToString(stmtBytes),
+		"payloadType": "application/vnd.in-toto+json",
+		"signatures":  []map[string]string{{"keyid": "test-key", "sig": "dGVzdA=="}},
 	}
 	envBytes, _ := json.Marshal(env)
 
@@ -1343,8 +1355,10 @@ func TestFindAttestation_CaseInsensitive(t *testing.T) {
 	predicate := map[string]string{"toolName": "bash"}
 	stmt := map[string]interface{}{"predicate": predicate}
 	stmtBytes, _ := json.Marshal(stmt)
-	env := map[string]string{
-		"payload": base64.StdEncoding.EncodeToString(stmtBytes),
+	env := map[string]interface{}{
+		"payload":     base64.StdEncoding.EncodeToString(stmtBytes),
+		"payloadType": "application/vnd.in-toto+json",
+		"signatures":  []map[string]string{{"keyid": "test-key", "sig": "dGVzdA=="}},
 	}
 	envBytes, _ := json.Marshal(env)
 
@@ -1971,4 +1985,108 @@ func TestIntegration_PreAndPostToolUse(t *testing.T) {
 	if len(ss.Metrics.FilesRead) != 1 {
 		t.Errorf("expected 1 file read from post-tool, got %d", len(ss.Metrics.FilesRead))
 	}
+}
+
+// ----- Stop: fake attestation file (no DSSE structure) is rejected -----
+
+func TestHandleStop_FakeAttestationRejected(t *testing.T) {
+	h := newTestHandler(t)
+	pol := &aflock.Policy{
+		Name:                 "test-fake-attest",
+		RequiredAttestations: []string{"security-review"},
+	}
+	seedSession(t, h, "session-fake-attest", pol)
+
+	attestDir := h.stateManager.AttestationsDir("session-fake-attest")
+	os.MkdirAll(attestDir, 0755)
+
+	// Write a fake attestation file that exists but has no valid DSSE structure
+	os.WriteFile(filepath.Join(attestDir, "security-review.json"), []byte(`{}`), 0644)
+
+	input := &aflock.HookInput{SessionID: "session-fake-attest"}
+
+	got := captureStdout(t, func() {
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out.Decision != "block" {
+		t.Errorf("expected block for fake attestation file, got %q", out.Decision)
+	}
+	if !strings.Contains(out.Reason, "missing required attestations") {
+		t.Errorf("expected 'missing required attestations' in reason, got: %s", out.Reason)
+	}
+}
+
+func TestHandleStop_EmptySignaturesRejected(t *testing.T) {
+	h := newTestHandler(t)
+	pol := &aflock.Policy{
+		Name:                 "test-empty-sig",
+		RequiredAttestations: []string{"build"},
+	}
+	seedSession(t, h, "session-empty-sig", pol)
+
+	attestDir := h.stateManager.AttestationsDir("session-empty-sig")
+	os.MkdirAll(attestDir, 0755)
+
+	// Attestation with payload and payloadType but empty signatures array
+	os.WriteFile(filepath.Join(attestDir, "build.json"),
+		[]byte(`{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json","signatures":[]}`), 0644)
+
+	input := &aflock.HookInput{SessionID: "session-empty-sig"}
+
+	got := captureStdout(t, func() {
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out.Decision != "block" {
+		t.Errorf("expected block for attestation with empty signatures, got %q", out.Decision)
+	}
+}
+
+func TestValidateAttestationIntegrity(t *testing.T) {
+	dir := t.TempDir()
+
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"valid DSSE", `{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json","signatures":[{"keyid":"k","sig":"s"}]}`, true},
+		{"empty object", `{}`, false},
+		{"missing signatures", `{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json"}`, false},
+		{"empty signatures", `{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json","signatures":[]}`, false},
+		{"missing payload", `{"payloadType":"application/vnd.in-toto+json","signatures":[{"keyid":"k","sig":"s"}]}`, false},
+		{"missing payloadType", `{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","signatures":[{"keyid":"k","sig":"s"}]}`, false},
+		{"not JSON", `this is not json`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(dir, tt.name+".json")
+			os.WriteFile(path, []byte(tt.content), 0644)
+			got := validateAttestationIntegrity(path)
+			if got != tt.want {
+				t.Errorf("validateAttestationIntegrity(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+
+	// Non-existent file
+	t.Run("non-existent", func(t *testing.T) {
+		if validateAttestationIntegrity(filepath.Join(dir, "nope.json")) {
+			t.Error("expected false for non-existent file")
+		}
+	})
 }
