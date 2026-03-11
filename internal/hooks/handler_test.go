@@ -2141,3 +2141,87 @@ func TestValidateAttestationIntegrity(t *testing.T) {
 		}
 	})
 }
+
+// ----- PreToolUse: identity constraints without SessionStart -> deny -----
+
+func TestHandlePreToolUse_IdentityConstraints_NoSessionStart_Denies(t *testing.T) {
+	h := newTestHandler(t)
+
+	// Create a policy file with identity constraints in a temp directory
+	policyDir := t.TempDir()
+	pol := aflock.Policy{
+		Name: "identity-required",
+		Identity: &aflock.IdentityPolicy{
+			AllowedModels: []string{"claude-3-opus"},
+		},
+	}
+	polBytes, _ := json.Marshal(pol)
+	os.WriteFile(filepath.Join(policyDir, ".aflock"), polBytes, 0644)
+
+	// Call handlePreToolUse WITHOUT prior handleSessionStart — no session state exists
+	input := &aflock.HookInput{
+		SessionID: "session-no-start",
+		Cwd:       policyDir,
+		ToolName:  "Bash",
+		ToolInput: json.RawMessage(`{"command": "echo hello"}`),
+	}
+
+	got := captureStdout(t, func() {
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("parse: %v (raw: %s)", err, got)
+	}
+
+	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionDeny {
+		t.Fatalf("expected deny when identity constraints exist but SessionStart was skipped, got %s",
+			out.HookSpecificOutput.PermissionDecision)
+	}
+	if !strings.Contains(out.HookSpecificOutput.PermissionDecisionReason, "identity verification") {
+		t.Errorf("expected reason about identity verification, got: %s", out.HookSpecificOutput.PermissionDecisionReason)
+	}
+}
+
+func TestHandlePreToolUse_NoIdentityConstraints_NoSessionStart_Allows(t *testing.T) {
+	h := newTestHandler(t)
+
+	// Create a policy file WITHOUT identity constraints
+	policyDir := t.TempDir()
+	pol := aflock.Policy{
+		Name: "no-identity",
+		Tools: &aflock.ToolsPolicy{
+			Allow: []string{"*"},
+		},
+	}
+	polBytes, _ := json.Marshal(pol)
+	os.WriteFile(filepath.Join(policyDir, ".aflock"), polBytes, 0644)
+
+	// Call handlePreToolUse WITHOUT prior handleSessionStart
+	input := &aflock.HookInput{
+		SessionID: "session-no-start-2",
+		Cwd:       policyDir,
+		ToolName:  "Read",
+		ToolInput: json.RawMessage(`{"file_path": "/tmp/test.txt"}`),
+	}
+
+	got := captureStdout(t, func() {
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("parse: %v (raw: %s)", err, got)
+	}
+
+	// Without identity constraints, ephemeral session should still work
+	if out.HookSpecificOutput.PermissionDecision == aflock.DecisionDeny {
+		t.Fatalf("expected allow when no identity constraints, got deny: %s",
+			out.HookSpecificOutput.PermissionDecisionReason)
+	}
+}

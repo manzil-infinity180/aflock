@@ -244,6 +244,12 @@ func (h *Handler) handlePreToolUse(input *aflock.HookInput) error {
 			return output.Write(output.PreToolUseDeny(
 				fmt.Sprintf("[aflock] Failed to load policy: %v", loadErr)))
 		}
+		// Deny if policy has identity constraints but SessionStart was skipped —
+		// identity was never verified, so we cannot trust the agent.
+		if pol.Identity != nil && len(pol.Identity.AllowedModels) > 0 {
+			return output.Write(output.PreToolUseDeny(
+				"[aflock] BLOCKED: policy requires identity verification but SessionStart was not called"))
+		}
 		// Create ephemeral session state
 		sessionState = h.stateManager.Initialize(input.SessionID, pol, policyPath)
 	}
