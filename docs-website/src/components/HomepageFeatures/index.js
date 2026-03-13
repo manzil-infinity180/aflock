@@ -16,8 +16,8 @@ const FeatureList = [
     title: 'Attest',
     description: (
       <>
-        Agent actions produce cryptographically signed in-toto attestations via DSSE envelopes.
-        Built on <a href="/docs/docs/ecosystem/rookery">Rookery</a>, a security-hardened attestation framework by <a href="https://testifysec.com">TestifySec</a>.
+        Every agent action produces a cryptographically signed in-toto attestation.
+        The agent never sees the signing key — unforgeable proof of compliance.
       </>
     ),
   },
