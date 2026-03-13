@@ -16,8 +16,8 @@ const FeatureList = [
     title: 'Attest',
     description: (
       <>
-        Every agent action produces a cryptographically signed in-toto attestation.
-        The agent never sees the signing key — unforgeable proof of compliance.
+        Agent actions produce cryptographically signed in-toto attestations via DSSE envelopes.
+        Built on <a href="/docs/docs/ecosystem/rookery">Rookery</a>, a security-hardened attestation framework by <a href="https://testifysec.com">TestifySec</a>.
       </>
     ),
   },
@@ -25,8 +25,8 @@ const FeatureList = [
     title: 'Verify',
     description: (
       <>
-        Verify constraint compliance after the fact with a 6-phase verification algorithm.
-        Cross-step Rego evaluation, merkle tree ordering proofs, and sublayout recursion.
+        Verify constraint compliance with a 6-phase verification algorithm.
+        Signature verification is implemented; identity, Rego, AI evaluation, and sublayout recursion are <a href="https://github.com/aflock-ai/aflock/issues/16">in active development</a>.
       </>
     ),
   },
