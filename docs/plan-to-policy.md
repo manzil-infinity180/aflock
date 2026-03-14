@@ -1,5 +1,9 @@
 # Plan-to-Policy: Spec-Driven Development for AI Agents
 
+:::info PR Status
+Plan-to-policy is implemented on the `spire-attestation-fixes` branch ([PR #11](https://github.com/aflock-ai/aflock/pull/11)) along with SPIRE and MCP fixes. This PR is open and not yet merged to `main`.
+:::
+
 ## What It Does
 
 `plan-to-policy` converts Claude plan files (markdown with acceptance criteria) into `.aflock` policy files with verification steps and AI evaluators. This enables **spec-driven development**: define what the AI must prove it did *before* implementation begins.
@@ -19,12 +23,32 @@ The plan becomes a **verifiable contract** — not just documentation.
 ## Architecture
 
 ```
-~/.claude/plans/plan.md     →   internal/plan/parser.go    →   ParsedPlan
-                                                                    ↓
-                                 internal/plan/generator.go  →   aflock.Policy
-                                                                    ↓
-                                 cmd/aflock/main.go          →   .aflock JSON file
+                    ┌──────────────────────────────────────────────────┐
+                    │              plan-to-policy pipeline             │
+                    └──────────────────────────────────────────────────┘
+
+  ┌─────────────────┐        ┌─────────────────┐        ┌─────────────────┐
+  │                 │        │                 │        │                 │
+  │  Claude Plan    │──────▶ │     Parser      │──────▶ │   Generator     │
+  │  (.md file)     │        │                 │        │                 │
+  │                 │        │  Extracts steps, │        │  Creates policy │
+  └─────────────────┘        │  criteria, files │        │  with evaluators│
+                             └─────────────────┘        └────────┬────────┘
+  ~/.claude/plans/           internal/plan/                      │
+  plan.md                    parser.go                           │
+                                      │                          ▼
+                                      │               ┌─────────────────┐
+                                      │               │                 │
+                                      └──────────────▶│  .aflock Policy │
+                                        ParsedPlan    │  (JSON file)    │
+                                                      │                 │
+                                                      └─────────────────┘
+                                                      cmd/aflock/main.go
 ```
+
+*[View interactive diagram on Excalidraw](https://excalidraw.com/#json=8JiDzCXJjIX_MhlU5KSf7,Kq7Xag5CZVcW-N-HVBXwZQ)*
+
+**Workflow:** Plan → Convert → Sign → Implement → Verify
 
 ### Components
 
