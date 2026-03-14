@@ -2158,7 +2158,7 @@ func TestEvaluateGrants_AllowGlobPatterns(t *testing.T) {
 	// APIs: denied URL
 	decision, reason = e.EvaluateGrants("WebFetch", json.RawMessage(`{"url": "https://evil.com/steal"}`))
 	if decision != aflock.DecisionDeny {
-		t.Errorf("expected deny for evil.com, got %s", decision)
+		t.Errorf("expected deny for evil.com, got %s: %s", decision, reason)
 	}
 
 	// Storage: allowed path
@@ -2170,7 +2170,7 @@ func TestEvaluateGrants_AllowGlobPatterns(t *testing.T) {
 	// Storage: denied path
 	decision, reason = e.EvaluateGrants("Bash", json.RawMessage(`{"command": "aws s3 cp s3://private-bucket/secrets ."}`))
 	if decision != aflock.DecisionDeny {
-		t.Errorf("expected deny for s3://private-bucket, got %s", decision)
+		t.Errorf("expected deny for s3://private-bucket, got %s: %s", decision, reason)
 	}
 }
 
