@@ -126,7 +126,12 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 		ModelVersion: agentIdentity.ModelVersion,
 		IdentityHash: agentIdentity.IdentityHash,
 		PolicyDigest: agentIdentity.PolicyDigest,
-		Environment:  func() string { if agentIdentity.Environment != nil { return agentIdentity.Environment.Type }; return "" }(),
+		Environment: func() string {
+			if agentIdentity.Environment != nil {
+				return agentIdentity.Environment.Type
+			}
+			return ""
+		}(),
 	}
 	if agentIdentity.Binary != nil {
 		sessionState.AgentIdentityMeta.BinaryName = agentIdentity.Binary.Name
@@ -421,7 +426,7 @@ func (h *Handler) createAttestation(sessionState *aflock.SessionState, input *af
 			return
 		}
 	}
-	defer signer.Close()
+	defer signer.Close() //nolint:errcheck // best-effort cleanup
 
 	// Build action record
 	toolUseID := input.ToolUseID
