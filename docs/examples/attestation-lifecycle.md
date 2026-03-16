@@ -84,12 +84,27 @@ Create `.claude/settings.local.json` in your project:
 
 ### Run with Claude Code
 
+A ready-to-use demo is included at `examples/attestation-demo/` with the `.aflock` policy and `.claude/settings.local.json` already configured:
+
 ```bash
-cd your-project/   # directory with .aflock and .claude/settings.local.json
-claude              # hooks auto-attach
+cd examples/attestation-demo
+claude
 ```
 
-Every tool call will produce a signed attestation in `~/.aflock/sessions/<id>/attestations/`.
+Hooks auto-attach via `.claude/settings.local.json`. Try:
+- `Read src/main.go` — allowed, creates attestation
+- `Read .env` — denied, no attestation
+- `Run: ls src/` — allowed, creates attestation
+
+Every allowed tool call produces a signed attestation in `~/.aflock/sessions/<id>/attestations/`.
+
+After exiting Claude Code, inspect the session:
+
+```bash
+cd examples/scripts
+./audit-session.sh --list
+./audit-session.sh <session-id>
+```
 
 ## Inspecting Attestations
 
@@ -160,19 +175,34 @@ print('SPIRE' if 'ephemeral' not in keyid else 'Ephemeral', '-', keyid)
 "
 ```
 
-## Full Automated Test
+## Testing
 
-Clone [aflock-example](https://github.com/aflock-ai/aflock) and run:
+### Automated demo (9 steps, 12 DSSE checks)
 
 ```bash
-cd aflock-example/attestation-demo
+cd examples/attestation-demo
 ./run-demo.sh
 ```
 
-Or run the audit script on any session:
+### Audit a session
 
 ```bash
-cd aflock-example
-./scripts/audit-session.sh --list
-./scripts/audit-session.sh <session-id>
+cd examples/scripts
+./audit-session.sh --list
+./audit-session.sh <session-id>
+```
+
+### Inspect attestation files
+
+```bash
+cd examples/scripts
+./inspect-attestation.sh --list
+./inspect-attestation.sh <session-id>
+```
+
+### Run 28 automated attestation tests
+
+```bash
+cd examples/scripts
+./run-attestation-tests.sh
 ```
