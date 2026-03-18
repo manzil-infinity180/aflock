@@ -535,18 +535,28 @@ func (h *Handler) handleStop(input *aflock.HookInput) error {
 		return output.Write(output.StopAllow())
 	}
 
-	// Check if required attestations are present
+	// Check required attestations — only for tools that were actually used.
+	// Policy constrains what must be attested, it doesn't instruct the agent
+	// to use tools it wasn't asked to use. If the user never used Bash,
+	// don't block Stop for a missing Bash attestation.
 	if len(sessionState.Policy.RequiredAttestations) > 0 {
+		usedTools := make(map[string]bool)
+		for _, action := range sessionState.Actions {
+			if action.Decision == "allow" {
+				usedTools[action.ToolName] = true
+			}
+		}
+
 		attestDir := h.stateManager.AttestationsDir(input.SessionID)
 		var missing []string
 		for _, required := range sessionState.Policy.RequiredAttestations {
-			if !findAttestation(attestDir, required) {
+			if usedTools[required] && !findAttestation(attestDir, required) {
 				missing = append(missing, required)
 			}
 		}
 		if len(missing) > 0 {
 			return output.Write(output.StopBlock(
-				fmt.Sprintf("[aflock] Cannot stop: missing required attestations: %v", missing)))
+				fmt.Sprintf("[aflock] Cannot stop: missing attestations for used tools: %v", missing)))
 		}
 	}
 
