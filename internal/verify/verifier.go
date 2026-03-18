@@ -103,6 +103,39 @@ func (v *Verifier) VerifySession(sessionID string) (*Result, error) {
 		}
 	}
 
+	// Check 0: Identity verification (Phase 2)
+	if sessionState.Policy.Identity != nil {
+		id := IdentityFields{}
+		if sessionState.AgentIdentityMeta != nil {
+			id.Model = sessionState.AgentIdentityMeta.Model
+			id.Environment = sessionState.AgentIdentityMeta.Environment
+		}
+		// Extract tools from session metrics (tool names that were used)
+		if sessionState.Metrics != nil && sessionState.Metrics.Tools != nil {
+			for toolName := range sessionState.Metrics.Tools {
+				id.Tools = append(id.Tools, toolName)
+			}
+			sort.Strings(id.Tools)
+		}
+		identityErrors := verifyIdentityConstraints(id, sessionState.Policy.Identity)
+		if len(identityErrors) > 0 {
+			result.Success = false
+			for _, msg := range identityErrors {
+				result.Checks = append(result.Checks, CheckResult{
+					Name:    "identity",
+					Passed:  false,
+					Message: msg,
+				})
+				result.Errors = append(result.Errors, msg)
+			}
+		} else {
+			result.Checks = append(result.Checks, CheckResult{
+				Name:   "identity",
+				Passed: true,
+			})
+		}
+	}
+
 	// Check 1: Policy limits (post-hoc)
 	if sessionState.Policy.Limits != nil {
 		evaluator := policy.NewEvaluator(sessionState.Policy, filepath.Dir(sessionState.PolicyPath))
@@ -457,6 +490,20 @@ func (v *Verifier) VerifySteps(pol *aflock.Policy, attestDir, treeHash string) (
 				result.Success = false
 			} else {
 				stepResult.SignatureValid = true
+			}
+		}
+
+		// Check identity constraints (Phase 2) if attestation was found
+		if stepResult.Found && pol.Identity != nil {
+			if id, err := extractIdentityFromAttestation(attestPath); err != nil {
+				stepResult.Errors = append(stepResult.Errors, fmt.Sprintf("Identity extraction failed: %v", err))
+				result.Success = false
+			} else if id != nil {
+				identityErrors := verifyIdentityConstraints(*id, pol.Identity)
+				for _, msg := range identityErrors {
+					stepResult.Errors = append(stepResult.Errors, msg)
+					result.Success = false
+				}
 			}
 		}
 
@@ -924,6 +971,154 @@ func topoSortSteps(steps map[string]aflock.Step) []string {
 	}
 
 	return sorted
+}
+
+// IdentityFields holds the identity fields extracted from an attestation or session
+// for verification against policy identity constraints.
+type IdentityFields struct {
+	Model       string
+	Environment string
+	Tools       []string // may be nil if not available (e.g., step-based verification)
+}
+
+// verifyIdentityConstraints checks identity fields against policy identity constraints.
+// Returns a list of errors for each constraint that fails. Returns nil if all pass
+// or if no identity policy is defined (no constraints = all identities allowed).
+func verifyIdentityConstraints(id IdentityFields, identityPolicy *aflock.IdentityPolicy) []string {
+	if identityPolicy == nil {
+		return nil
+	}
+
+	var errors []string
+
+	// Check allowedModels — model must match at least one glob pattern
+	if len(identityPolicy.AllowedModels) > 0 && id.Model != "" {
+		matched := false
+		for _, pattern := range identityPolicy.AllowedModels {
+			if matchIdentityGlob(pattern, id.Model) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			errors = append(errors, fmt.Sprintf(
+				"Identity mismatch: model %q does not match allowedModels %v",
+				id.Model, identityPolicy.AllowedModels))
+		}
+	}
+
+	// Check allowedEnvironments — environment must match at least one glob pattern
+	if len(identityPolicy.AllowedEnvironments) > 0 && id.Environment != "" {
+		matched := false
+		for _, pattern := range identityPolicy.AllowedEnvironments {
+			if matchIdentityGlob(pattern, id.Environment) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			errors = append(errors, fmt.Sprintf(
+				"Identity mismatch: environment %q does not match allowedEnvironments %v",
+				id.Environment, identityPolicy.AllowedEnvironments))
+		}
+	}
+
+	// Check requiredTools — each required tool must be present in the agent's tools
+	if len(identityPolicy.RequiredTools) > 0 && id.Tools != nil {
+		toolSet := make(map[string]bool, len(id.Tools))
+		for _, t := range id.Tools {
+			toolSet[t] = true
+		}
+		for _, required := range identityPolicy.RequiredTools {
+			if !toolSet[required] {
+				errors = append(errors, fmt.Sprintf(
+					"Identity mismatch: required tool %q not available to agent",
+					required))
+			}
+		}
+	}
+
+	return errors
+}
+
+// matchIdentityGlob performs glob matching for identity constraints.
+// Supports * as wildcard for any characters (uses filepath.Match semantics).
+func matchIdentityGlob(pattern, value string) bool {
+	if pattern == "*" {
+		return true
+	}
+	// filepath.Match handles * for single path segments. For identity matching
+	// we want * to match any sequence, so use HasPrefix for trailing * patterns.
+	if strings.HasSuffix(pattern, "*") {
+		return strings.HasPrefix(value, pattern[:len(pattern)-1])
+	}
+	matched, err := filepath.Match(pattern, value)
+	return err == nil && matched
+}
+
+// extractIdentityFromAttestation extracts the TransitiveIdentity from an attestation
+// envelope's predicate. Returns nil fields if identity is not present.
+func extractIdentityFromAttestation(attestPath string) (*IdentityFields, error) {
+	data, err := os.ReadFile(attestPath) //nolint:gosec // G304: attestation path from state directory
+	if err != nil {
+		return nil, fmt.Errorf("read attestation: %w", err)
+	}
+
+	var envelope struct {
+		Payload string `json:"payload"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, fmt.Errorf("parse envelope: %w", err)
+	}
+
+	payload, err := base64.StdEncoding.DecodeString(envelope.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("decode payload: %w", err)
+	}
+
+	// Parse statement → predicate → collection → attestations → find action attestation
+	var statement struct {
+		Predicate json.RawMessage `json:"predicate"`
+	}
+	if err := json.Unmarshal(payload, &statement); err != nil {
+		return nil, fmt.Errorf("parse statement: %w", err)
+	}
+
+	var collection struct {
+		Attestations []struct {
+			Type        string          `json:"type"`
+			Attestation json.RawMessage `json:"attestation"`
+		} `json:"attestations"`
+	}
+	if err := json.Unmarshal(statement.Predicate, &collection); err != nil {
+		return nil, fmt.Errorf("parse collection: %w", err)
+	}
+
+	// Look for action attestation which contains the agent identity
+	for _, att := range collection.Attestations {
+		if att.Type != "https://aflock.ai/attestations/action/v0.1" {
+			continue
+		}
+
+		var action struct {
+			AgentIdentity *struct {
+				Model       string `json:"model"`
+				Environment string `json:"environment"`
+			} `json:"agentIdentity"`
+		}
+		if err := json.Unmarshal(att.Attestation, &action); err != nil {
+			continue
+		}
+		if action.AgentIdentity != nil {
+			return &IdentityFields{
+				Model:       action.AgentIdentity.Model,
+				Environment: action.AgentIdentity.Environment,
+			}, nil
+		}
+	}
+
+	// No identity found — not an error, just no identity to verify
+	return nil, nil
 }
 
 // VerifyTreeHash gets the current git tree hash and verifies all steps.
