@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	aflockMerkle "github.com/aflock-ai/aflock/internal/merkle"
 	"github.com/aflock-ai/aflock/pkg/aflock"
 )
 
@@ -587,5 +588,386 @@ func TestExtractIdentityFromAttestation_NoActionAttestation(t *testing.T) {
 	}
 	if id != nil {
 		t.Errorf("Expected nil identity for attestation without action type, got %+v", id)
+	}
+}
+
+// ---- Phase 4: Constraint Evaluation (Rego) ----
+
+func TestVerifySession_RegoPass(t *testing.T) {
+	tmpDir := t.TempDir()
+	ss := &aflock.SessionState{
+		SessionID: "sess-rego-pass",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "rego-test",
+			Version: "1.0",
+			Evaluators: &aflock.EvaluatorsPolicy{
+				Rego: []aflock.RegoEvaluator{
+					{
+						Name:   "spend-check",
+						Policy: "package aflock\ndeny = []",
+					},
+				},
+			},
+		},
+		Actions: []aflock.ActionRecord{
+			{Timestamp: time.Now(), ToolName: "Read", ToolUseID: "tu_1", Decision: "allow"},
+		},
+		Metrics: &aflock.SessionMetrics{
+			CostUSD: 1.0,
+		},
+	}
+	writeSessionState(t, tmpDir, "sess-rego-pass", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-rego-pass")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if !result.Success {
+		t.Errorf("Expected success, got errors: %v", result.Errors)
+	}
+	found := false
+	for _, c := range result.Checks {
+		if c.Name == "rego" && c.Passed {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("Expected passing rego check")
+	}
+}
+
+func TestVerifySession_RegoDeny(t *testing.T) {
+	tmpDir := t.TempDir()
+	ss := &aflock.SessionState{
+		SessionID: "sess-rego-deny",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "rego-test",
+			Version: "1.0",
+			Evaluators: &aflock.EvaluatorsPolicy{
+				Rego: []aflock.RegoEvaluator{
+					{
+						Name: "spend-limit",
+						Policy: `package aflock
+deny[msg] {
+  input.metrics.costUSD > 5.0
+  msg := sprintf("Spend $%.2f exceeds $5.00", [input.metrics.costUSD])
+}`,
+					},
+				},
+			},
+		},
+		Actions: []aflock.ActionRecord{
+			{Timestamp: time.Now(), ToolName: "Read", ToolUseID: "tu_1", Decision: "allow"},
+		},
+		Metrics: &aflock.SessionMetrics{
+			CostUSD: 10.50,
+		},
+	}
+	writeSessionState(t, tmpDir, "sess-rego-deny", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-rego-deny")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if result.Success {
+		t.Error("Expected failure for rego deny")
+	}
+	if len(result.Errors) == 0 {
+		t.Error("Expected at least one error")
+	}
+	foundRego := false
+	for _, c := range result.Checks {
+		if c.Name == "rego" && !c.Passed {
+			foundRego = true
+		}
+	}
+	if !foundRego {
+		t.Error("Expected failing rego check")
+	}
+}
+
+func TestVerifySession_NoRegoPolicy(t *testing.T) {
+	tmpDir := t.TempDir()
+	ss := &aflock.SessionState{
+		SessionID: "sess-no-rego",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "no-rego",
+			Version: "1.0",
+		},
+		Metrics: &aflock.SessionMetrics{},
+	}
+	writeSessionState(t, tmpDir, "sess-no-rego", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-no-rego")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if !result.Success {
+		t.Errorf("Expected success, got errors: %v", result.Errors)
+	}
+	for _, c := range result.Checks {
+		if c.Name == "rego" {
+			t.Error("Should not have rego check when no evaluators defined")
+		}
+	}
+}
+
+func TestVerifySession_RegoMultiplePolicies(t *testing.T) {
+	tmpDir := t.TempDir()
+	ss := &aflock.SessionState{
+		SessionID: "sess-rego-multi",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "rego-multi",
+			Version: "1.0",
+			Evaluators: &aflock.EvaluatorsPolicy{
+				Rego: []aflock.RegoEvaluator{
+					{
+						Name:   "cost-check",
+						Policy: "package cost\ndeny[msg] {\n  input.metrics.costUSD > 100\n  msg := \"Cost too high\"\n}",
+					},
+					{
+						Name:   "turns-check",
+						Policy: "package turns\ndeny[msg] {\n  input.metrics.turns > 50\n  msg := \"Too many turns\"\n}",
+					},
+				},
+			},
+		},
+		Metrics: &aflock.SessionMetrics{
+			CostUSD: 200.0,
+			Turns:   100,
+		},
+	}
+	writeSessionState(t, tmpDir, "sess-rego-multi", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-rego-multi")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if result.Success {
+		t.Error("Expected failure for multiple rego denials")
+	}
+	if len(result.Errors) < 2 {
+		t.Errorf("Expected at least 2 errors, got %d: %v", len(result.Errors), result.Errors)
+	}
+}
+
+// ---- Phase 3: Materials Binding (Merkle Tree) ----
+
+// buildMerkleRootFromActions computes the Merkle root from action records for test setup.
+func buildMerkleRootFromActions(t *testing.T, actions []aflock.ActionRecord) string {
+	t.Helper()
+	entries := make([][]byte, len(actions))
+	for i, a := range actions {
+		data, err := json.Marshal(a)
+		if err != nil {
+			t.Fatalf("marshal action %d: %v", i, err)
+		}
+		entries[i] = data
+	}
+	root, err := aflockMerkle.BuildRoot(entries)
+	if err != nil {
+		t.Fatalf("BuildRoot: %v", err)
+	}
+	return root
+}
+
+func TestVerifySession_MerklePass(t *testing.T) {
+	tmpDir := t.TempDir()
+	actions := []aflock.ActionRecord{
+		{Timestamp: time.Now(), ToolName: "Read", ToolUseID: "tu_1", Decision: "allow"},
+		{Timestamp: time.Now(), ToolName: "Edit", ToolUseID: "tu_2", Decision: "allow"},
+	}
+	merkleRoot := buildMerkleRootFromActions(t, actions)
+
+	ss := &aflock.SessionState{
+		SessionID: "sess-merkle-pass",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "merkle-test",
+			Version: "1.0",
+			MaterialsFrom: &aflock.MaterialsPolicy{
+				Session: &aflock.SessionMaterial{
+					MerkleRoot: merkleRoot,
+				},
+			},
+		},
+		Actions: actions,
+		Metrics: &aflock.SessionMetrics{},
+	}
+	writeSessionState(t, tmpDir, "sess-merkle-pass", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-merkle-pass")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if !result.Success {
+		t.Errorf("Expected success, got errors: %v", result.Errors)
+	}
+	found := false
+	for _, c := range result.Checks {
+		if c.Name == "materials:merkle" && c.Passed {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("Expected passing materials:merkle check")
+	}
+}
+
+func TestVerifySession_MerkleFail_TamperedAction(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalActions := []aflock.ActionRecord{
+		{Timestamp: time.Now(), ToolName: "Read", ToolUseID: "tu_1", Decision: "allow"},
+		{Timestamp: time.Now(), ToolName: "Edit", ToolUseID: "tu_2", Decision: "allow"},
+	}
+	merkleRoot := buildMerkleRootFromActions(t, originalActions)
+
+	// Tamper: change the tool name
+	tamperedActions := []aflock.ActionRecord{
+		{Timestamp: originalActions[0].Timestamp, ToolName: "Read", ToolUseID: "tu_1", Decision: "allow"},
+		{Timestamp: originalActions[1].Timestamp, ToolName: "Bash", ToolUseID: "tu_2", Decision: "allow"}, // changed
+	}
+
+	ss := &aflock.SessionState{
+		SessionID: "sess-merkle-tamper",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "merkle-test",
+			Version: "1.0",
+			MaterialsFrom: &aflock.MaterialsPolicy{
+				Session: &aflock.SessionMaterial{
+					MerkleRoot: merkleRoot,
+				},
+			},
+		},
+		Actions: tamperedActions,
+		Metrics: &aflock.SessionMetrics{},
+	}
+	writeSessionState(t, tmpDir, "sess-merkle-tamper", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-merkle-tamper")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if result.Success {
+		t.Error("Expected failure for tampered action")
+	}
+	foundMerkleError := false
+	for _, e := range result.Errors {
+		if len(e) > 0 {
+			foundMerkleError = true
+		}
+	}
+	if !foundMerkleError {
+		t.Error("Expected merkle-related error")
+	}
+}
+
+func TestVerifySession_MerkleFail_DroppedAction(t *testing.T) {
+	tmpDir := t.TempDir()
+	actions := []aflock.ActionRecord{
+		{Timestamp: time.Now(), ToolName: "Read", ToolUseID: "tu_1", Decision: "allow"},
+		{Timestamp: time.Now(), ToolName: "Bash", ToolUseID: "tu_2", Decision: "allow"},
+		{Timestamp: time.Now(), ToolName: "Edit", ToolUseID: "tu_3", Decision: "allow"},
+	}
+	merkleRoot := buildMerkleRootFromActions(t, actions)
+
+	// Drop the middle action (agent trying to hide Bash usage)
+	droppedActions := []aflock.ActionRecord{
+		actions[0],
+		actions[2], // skipped actions[1]
+	}
+
+	ss := &aflock.SessionState{
+		SessionID: "sess-merkle-drop",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "merkle-test",
+			Version: "1.0",
+			MaterialsFrom: &aflock.MaterialsPolicy{
+				Session: &aflock.SessionMaterial{
+					MerkleRoot: merkleRoot,
+				},
+			},
+		},
+		Actions: droppedActions,
+		Metrics: &aflock.SessionMetrics{},
+	}
+	writeSessionState(t, tmpDir, "sess-merkle-drop", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-merkle-drop")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if result.Success {
+		t.Error("Expected failure for dropped action")
+	}
+}
+
+func TestVerifySession_NoMerklePolicy(t *testing.T) {
+	tmpDir := t.TempDir()
+	ss := &aflock.SessionState{
+		SessionID: "sess-no-merkle",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "no-merkle-test",
+			Version: "1.0",
+			// No MaterialsFrom — merkle check should be skipped
+		},
+		Metrics: &aflock.SessionMetrics{},
+	}
+	writeSessionState(t, tmpDir, "sess-no-merkle", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-no-merkle")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if !result.Success {
+		t.Errorf("Expected success, got errors: %v", result.Errors)
+	}
+	for _, c := range result.Checks {
+		if c.Name == "materials:merkle" {
+			t.Error("Should not have merkle check when no MaterialsFrom policy")
+		}
+	}
+}
+
+func TestVerifySession_MerkleEmptyRoot(t *testing.T) {
+	tmpDir := t.TempDir()
+	ss := &aflock.SessionState{
+		SessionID: "sess-empty-root",
+		StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name:    "empty-root-test",
+			Version: "1.0",
+			MaterialsFrom: &aflock.MaterialsPolicy{
+				Session: &aflock.SessionMaterial{
+					MerkleRoot: "", // Empty root — skip check
+				},
+			},
+		},
+		Metrics: &aflock.SessionMetrics{},
+	}
+	writeSessionState(t, tmpDir, "sess-empty-root", ss)
+
+	v := newTestVerifier(tmpDir)
+	result, err := v.VerifySession("sess-empty-root")
+	if err != nil {
+		t.Fatalf("VerifySession: %v", err)
+	}
+	if !result.Success {
+		t.Errorf("Expected success for empty merkle root, got errors: %v", result.Errors)
 	}
 }

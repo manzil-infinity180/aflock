@@ -103,22 +103,40 @@ var initCmd = &cobra.Command{
 var verifyPolicyPath string
 var verifyAttestDir string
 var verifyTreeHash string
+var verifySessionID string
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Verify step attestations against policy",
-	Long: `Verify step attestations for a git tree hash against a policy.
+	Long: `Verify attestations against a policy.
 
-Uses the current git tree hash if --tree-hash is not specified.
-
-The policy defines required steps (e.g., lint, test, build) and the
-verify command checks that attestations exist and are valid for each step.
+Supports two verification modes:
+  - Step-based: Verify step attestations for a git tree hash (default)
+  - Session-based: Verify a session's compliance with policy constraints
 
 Examples:
   aflock verify --policy .aflock                     # Verify steps for current git HEAD
   aflock verify --policy .aflock --tree-hash abc123  # Verify specific tree hash
+  aflock verify --session <session-id>               # Verify a session (Phase 2-4)
   aflock verify -p policy.json -a ./attestations     # Custom attestation directory`,
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cobra.Command, args []string) { //nolint:gocyclo // verify command handles two modes
+		// Session-based verification mode
+		if verifySessionID != "" {
+			verifier := verify.NewVerifier()
+			result, err := verifier.VerifySession(verifySessionID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Session verification failed: %v\n", err)
+				os.Exit(1)
+			}
+			output, _ := json.MarshalIndent(result, "", "  ")
+			fmt.Println(string(output))
+			if !result.Success {
+				os.Exit(1)
+			}
+			return
+		}
+
+		// Step-based verification mode (default)
 		if verifyPolicyPath == "" {
 			// Try to find policy in current directory
 			cwd, _ := os.Getwd()
@@ -565,6 +583,7 @@ func init() {
 	verifyCmd.Flags().StringVarP(&verifyPolicyPath, "policy", "p", "", "Path to .aflock policy file (enables step-based verification)")
 	verifyCmd.Flags().StringVarP(&verifyAttestDir, "attestations", "a", "", "Attestations directory (default: ~/.aflock/attestations)")
 	verifyCmd.Flags().StringVar(&verifyTreeHash, "tree-hash", "", "Git tree hash to verify (default: current HEAD)")
+	verifyCmd.Flags().StringVar(&verifySessionID, "session", "", "Session ID to verify (session-based verification mode)")
 
 	// Sign command flags
 	signCmd.Flags().StringVarP(&signKeyPath, "key", "k", "", "Path to ECDSA private key PEM file (or set AFLOCK_SIGNING_KEY)")

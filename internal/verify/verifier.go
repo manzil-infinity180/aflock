@@ -19,7 +19,9 @@ import (
 	"time"
 
 	"github.com/aflock-ai/aflock/internal/attestation"
+	aflockMerkle "github.com/aflock-ai/aflock/internal/merkle"
 	"github.com/aflock-ai/aflock/internal/policy"
+	aflockRego "github.com/aflock-ai/aflock/internal/rego"
 	"github.com/aflock-ai/aflock/internal/state"
 	"github.com/aflock-ai/aflock/pkg/aflock"
 )
@@ -131,6 +133,48 @@ func (v *Verifier) VerifySession(sessionID string) (*Result, error) {
 		} else {
 			result.Checks = append(result.Checks, CheckResult{
 				Name:   "identity",
+				Passed: true,
+			})
+		}
+	}
+
+	// Check 0.5: Materials binding / Merkle tree (Phase 3)
+	if sessionState.Policy.MaterialsFrom != nil && sessionState.Policy.MaterialsFrom.Session != nil {
+		merkleErrors := verifySessionMerkle(sessionState)
+		if len(merkleErrors) > 0 {
+			result.Success = false
+			for _, msg := range merkleErrors {
+				result.Checks = append(result.Checks, CheckResult{
+					Name:    "materials:merkle",
+					Passed:  false,
+					Message: msg,
+				})
+				result.Errors = append(result.Errors, msg)
+			}
+		} else {
+			result.Checks = append(result.Checks, CheckResult{
+				Name:   "materials:merkle",
+				Passed: true,
+			})
+		}
+	}
+
+	// Check 0.7: Rego constraint evaluation (Phase 4)
+	if sessionState.Policy.Evaluators != nil && len(sessionState.Policy.Evaluators.Rego) > 0 {
+		regoErrors := evaluateSessionRego(sessionState)
+		if len(regoErrors) > 0 {
+			result.Success = false
+			for _, msg := range regoErrors {
+				result.Checks = append(result.Checks, CheckResult{
+					Name:    "rego",
+					Passed:  false,
+					Message: msg,
+				})
+				result.Errors = append(result.Errors, msg)
+			}
+		} else {
+			result.Checks = append(result.Checks, CheckResult{
+				Name:   "rego",
 				Passed: true,
 			})
 		}
@@ -971,6 +1015,93 @@ func topoSortSteps(steps map[string]aflock.Step) []string {
 	}
 
 	return sorted
+}
+
+// evaluateSessionRego runs top-level Rego evaluators against session data (Phase 4).
+// The input to each Rego policy is:
+//
+//	{
+//	  "policy": { ... policy fields ... },
+//	  "actions": [ ... session actions ... ],
+//	  "metrics": { ... session metrics ... }
+//	}
+//
+// Each Rego module must define a `deny` rule returning denial reason strings.
+func evaluateSessionRego(sessionState *aflock.SessionState) []string {
+	if sessionState.Policy.Evaluators == nil || len(sessionState.Policy.Evaluators.Rego) == 0 {
+		return nil
+	}
+
+	// Build the input for Rego evaluation
+	input := map[string]any{
+		"policy":  sessionState.Policy,
+		"actions": sessionState.Actions,
+		"metrics": sessionState.Metrics,
+	}
+
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return []string{fmt.Sprintf("Rego evaluation failed: marshal input: %v", err)}
+	}
+
+	// Convert aflock evaluators to rego.Policy
+	policies := make([]aflockRego.Policy, len(sessionState.Policy.Evaluators.Rego))
+	for i, eval := range sessionState.Policy.Evaluators.Rego {
+		policies[i] = aflockRego.Policy{
+			Name:   eval.Name,
+			Module: eval.Policy,
+		}
+	}
+
+	results, err := aflockRego.Evaluate(policies, inputJSON)
+	if err != nil {
+		return []string{fmt.Sprintf("Rego evaluation failed: %v", err)}
+	}
+
+	var errors []string
+	for _, r := range results {
+		if !r.Passed {
+			for _, reason := range r.Reasons {
+				errors = append(errors, fmt.Sprintf("Rego evaluator %q: %s", r.Name, reason))
+			}
+		}
+	}
+	return errors
+}
+
+// verifySessionMerkle checks the Merkle tree root over session actions (Phase 3).
+// It serializes each ActionRecord to JSON, builds a Merkle tree using RFC 6962 hashing
+// with JCS canonicalization, and compares the computed root against the expected root
+// stored in policy.MaterialsFrom.Session.MerkleRoot.
+func verifySessionMerkle(sessionState *aflock.SessionState) []string {
+	if sessionState.Policy.MaterialsFrom == nil || sessionState.Policy.MaterialsFrom.Session == nil {
+		return nil
+	}
+
+	expectedRoot := sessionState.Policy.MaterialsFrom.Session.MerkleRoot
+	if expectedRoot == "" {
+		return nil // No expected root — nothing to verify
+	}
+
+	if len(sessionState.Actions) == 0 {
+		return []string{"Materials binding failed: no session actions to build Merkle tree"}
+	}
+
+	// Serialize each action record to JSON for Merkle leaf computation
+	entries := make([][]byte, 0, len(sessionState.Actions))
+	for i, action := range sessionState.Actions {
+		data, err := json.Marshal(action)
+		if err != nil {
+			return []string{fmt.Sprintf("Materials binding failed: marshal action %d: %v", i, err)}
+		}
+		entries = append(entries, data)
+	}
+
+	if err := aflockMerkle.VerifyRoot(entries, expectedRoot); err != nil {
+		return []string{fmt.Sprintf("Materials binding failed: %v", err)}
+	}
+
+	return nil
 }
 
 // IdentityFields holds the identity fields extracted from an attestation or session
