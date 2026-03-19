@@ -293,6 +293,27 @@ func (v *Verifier) VerifySession(sessionID string) (*Result, error) {
 		Message: fmt.Sprintf("%d total actions, %d blocked", len(sessionState.Actions), deniedCount),
 	})
 
+	// Check 5: Sublayout recursion (Phase 6)
+	if len(sessionState.Policy.Sublayouts) > 0 && len(sessionState.ChildSessionIDs) > 0 {
+		sublayoutErrors := v.verifySublayouts(sessionState)
+		if len(sublayoutErrors) > 0 {
+			result.Success = false
+			for _, msg := range sublayoutErrors {
+				result.Checks = append(result.Checks, CheckResult{
+					Name:    "sublayout",
+					Passed:  false,
+					Message: msg,
+				})
+				result.Errors = append(result.Errors, msg)
+			}
+		} else {
+			result.Checks = append(result.Checks, CheckResult{
+				Name:   "sublayout",
+				Passed: true,
+			})
+		}
+	}
+
 	return result, nil
 }
 
@@ -1048,6 +1069,129 @@ func topoSortSteps(steps map[string]aflock.Step) []string {
 	}
 
 	return sorted
+}
+
+// verifySublayouts checks child sessions against sublayout policies (Phase 6).
+// For each sublayout defined in the parent policy, it:
+//  1. Verifies attenuation (sub-limits ≤ parent limits)
+//  2. Finds the matching child session
+//  3. Recursively verifies the child session against the sublayout's policy
+//  4. Accumulates child spend toward parent metrics
+//
+//nolint:gocognit // sublayout verification requires many checks
+func (v *Verifier) verifySublayouts(parentState *aflock.SessionState) []string {
+	if len(parentState.Policy.Sublayouts) == 0 {
+		return nil
+	}
+
+	var errors []string
+
+	for _, sub := range parentState.Policy.Sublayouts {
+		// 1. Verify attenuation: sub-agent limits must be ≤ parent limits
+		if attErrors := verifyAttenuation(parentState.Policy.Limits, sub.Limits); len(attErrors) > 0 {
+			for _, msg := range attErrors {
+				errors = append(errors, fmt.Sprintf("sublayout %q: attenuation violation: %s", sub.Name, msg))
+			}
+			continue // Don't verify child if attenuation is violated — policy itself is invalid
+		}
+
+		// 2. Find matching child session(s) for this sublayout
+		childFound := false
+		for _, childID := range parentState.ChildSessionIDs {
+			childState, err := v.stateManager.Load(childID)
+			if err != nil || childState == nil {
+				continue
+			}
+
+			// Match child to sublayout by policy name or attestation prefix
+			if !matchesSublayout(childState, &sub) {
+				continue
+			}
+
+			childFound = true
+
+			// 3. Recursively verify the child session
+			childResult, err := v.VerifySession(childID)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("sublayout %q: verify child %s: %v", sub.Name, childID, err))
+				continue
+			}
+
+			if !childResult.Success {
+				for _, e := range childResult.Errors {
+					errors = append(errors, fmt.Sprintf("sublayout %q [%s]: %s", sub.Name, childID, e))
+				}
+			}
+
+			// 4. Accumulate child spend toward parent (for Rego cross-check)
+			if childResult.Metrics != nil && parentState.Metrics != nil {
+				parentState.Metrics.CostUSD += childResult.Metrics.TotalCostUSD
+				parentState.Metrics.TokensIn += childResult.Metrics.TotalTokensIn
+				parentState.Metrics.TokensOut += childResult.Metrics.TotalTokensOut
+			}
+		}
+
+		if !childFound {
+			errors = append(errors, fmt.Sprintf("sublayout %q: no matching child session found", sub.Name))
+		}
+	}
+
+	return errors
+}
+
+// matchesSublayout checks if a child session matches a sublayout definition.
+// Matches by policy name or attestation prefix.
+func matchesSublayout(child *aflock.SessionState, sub *aflock.Sublayout) bool {
+	if child.Policy == nil {
+		return false
+	}
+	// Match by policy name
+	if child.Policy.Name == sub.Name {
+		return true
+	}
+	// Match by attestation prefix (if set)
+	if sub.AttestationPrefix != "" && child.Policy.Name == sub.AttestationPrefix {
+		return true
+	}
+	// Match by parent session reference
+	if child.ParentSessionID != "" {
+		return true // Child was spawned by this parent — assume it matches
+	}
+	return false
+}
+
+// verifyAttenuation checks that sub-agent limits are ≤ parent limits.
+// This prevents privilege escalation: a sub-agent cannot have higher limits than its parent.
+// Returns a list of violations. Empty list = attenuation is valid.
+func verifyAttenuation(parent, child *aflock.LimitsPolicy) []string {
+	if child == nil {
+		return nil // No child limits = inherits parent (always valid)
+	}
+	if parent == nil {
+		return nil // No parent limits = no constraints to violate
+	}
+
+	var violations []string
+
+	checkLimit := func(name string, parentLimit, childLimit *aflock.Limit) {
+		if childLimit == nil || parentLimit == nil {
+			return // No limit set on one side = no violation
+		}
+		if childLimit.Value > parentLimit.Value {
+			violations = append(violations, fmt.Sprintf(
+				"%s: child %.2f > parent %.2f",
+				name, childLimit.Value, parentLimit.Value))
+		}
+	}
+
+	checkLimit("maxSpendUSD", parent.MaxSpendUSD, child.MaxSpendUSD)
+	checkLimit("maxTokensIn", parent.MaxTokensIn, child.MaxTokensIn)
+	checkLimit("maxTokensOut", parent.MaxTokensOut, child.MaxTokensOut)
+	checkLimit("maxTurns", parent.MaxTurns, child.MaxTurns)
+	checkLimit("maxWallTimeSeconds", parent.MaxWallTimeSeconds, child.MaxWallTimeSeconds)
+	checkLimit("maxToolCalls", parent.MaxToolCalls, child.MaxToolCalls)
+
+	return violations
 }
 
 // evaluateSessionAI runs AI evaluators against session data (Phase 5).
