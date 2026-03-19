@@ -104,6 +104,7 @@ var verifyPolicyPath string
 var verifyAttestDir string
 var verifyTreeHash string
 var verifySessionID string
+var verifySkipAI bool
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
@@ -123,6 +124,7 @@ Examples:
 		// Session-based verification mode
 		if verifySessionID != "" {
 			verifier := verify.NewVerifier()
+			verifier.SkipAI = verifySkipAI
 			result, err := verifier.VerifySession(verifySessionID)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Session verification failed: %v\n", err)
@@ -584,6 +586,7 @@ func init() {
 	verifyCmd.Flags().StringVarP(&verifyAttestDir, "attestations", "a", "", "Attestations directory (default: ~/.aflock/attestations)")
 	verifyCmd.Flags().StringVar(&verifyTreeHash, "tree-hash", "", "Git tree hash to verify (default: current HEAD)")
 	verifyCmd.Flags().StringVar(&verifySessionID, "session", "", "Session ID to verify (session-based verification mode)")
+	verifyCmd.Flags().BoolVar(&verifySkipAI, "skip-ai", false, "Skip Phase 5 (AI Evaluation) — saves cost, no network needed")
 
 	// Sign command flags
 	signCmd.Flags().StringVarP(&signKeyPath, "key", "k", "", "Path to ECDSA private key PEM file (or set AFLOCK_SIGNING_KEY)")

@@ -2,6 +2,7 @@
 package verify
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aflock-ai/aflock/internal/aieval"
 	"github.com/aflock-ai/aflock/internal/attestation"
 	aflockMerkle "github.com/aflock-ai/aflock/internal/merkle"
 	"github.com/aflock-ai/aflock/internal/policy"
@@ -63,6 +65,7 @@ type MetricsSummary struct {
 // Verifier verifies session attestations against policy.
 type Verifier struct {
 	stateManager *state.Manager
+	SkipAI       bool // Skip Phase 5 (AI Evaluation)
 }
 
 // NewVerifier creates a new verifier.
@@ -177,6 +180,36 @@ func (v *Verifier) VerifySession(sessionID string) (*Result, error) {
 				Name:   "rego",
 				Passed: true,
 			})
+		}
+	}
+
+	// Check 0.8: AI Evaluation (Phase 5)
+	if sessionState.Policy.Evaluators != nil && len(sessionState.Policy.Evaluators.AI) > 0 {
+		if v.SkipAI {
+			result.Checks = append(result.Checks, CheckResult{
+				Name:    "ai",
+				Passed:  true,
+				Message: "Skipped: --skip-ai flag set",
+			})
+			result.Warnings = append(result.Warnings, "Phase 5 (AI Evaluation) skipped: --skip-ai flag set")
+		} else {
+			aiErrors := evaluateSessionAI(sessionState)
+			if len(aiErrors) > 0 {
+				result.Success = false
+				for _, msg := range aiErrors {
+					result.Checks = append(result.Checks, CheckResult{
+						Name:    "ai",
+						Passed:  false,
+						Message: msg,
+					})
+					result.Errors = append(result.Errors, msg)
+				}
+			} else {
+				result.Checks = append(result.Checks, CheckResult{
+					Name:   "ai",
+					Passed: true,
+				})
+			}
 		}
 	}
 
@@ -1015,6 +1048,50 @@ func topoSortSteps(steps map[string]aflock.Step) []string {
 	}
 
 	return sorted
+}
+
+// evaluateSessionAI runs AI evaluators against session data (Phase 5).
+// The materials passed to the AI include session actions, metrics, and policy context.
+func evaluateSessionAI(sessionState *aflock.SessionState) []string {
+	if sessionState.Policy.Evaluators == nil || len(sessionState.Policy.Evaluators.AI) == 0 {
+		return nil
+	}
+
+	// Build materials context for the AI evaluator
+	materials := map[string]any{
+		"policy":  sessionState.Policy,
+		"actions": sessionState.Actions,
+		"metrics": sessionState.Metrics,
+	}
+
+	materialsJSON, err := json.Marshal(materials)
+	if err != nil {
+		return []string{fmt.Sprintf("AI evaluation failed: marshal materials: %v", err)}
+	}
+
+	// Convert aflock evaluators to aieval.Policy
+	policies := make([]aieval.Policy, len(sessionState.Policy.Evaluators.AI))
+	for i, eval := range sessionState.Policy.Evaluators.AI {
+		policies[i] = aieval.Policy{
+			Name:   eval.Name,
+			Prompt: eval.Prompt,
+			Model:  eval.Model,
+		}
+	}
+
+	ctx := context.Background()
+	results, err := aieval.Evaluate(ctx, policies, materialsJSON)
+	if err != nil {
+		return []string{fmt.Sprintf("AI evaluation failed: %v", err)}
+	}
+
+	var errors []string
+	for _, r := range results {
+		if !r.Passed {
+			errors = append(errors, fmt.Sprintf("AI evaluator %q: [%s] %s", r.Name, r.Status, r.Reason))
+		}
+	}
+	return errors
 }
 
 // evaluateSessionRego runs top-level Rego evaluators against session data (Phase 4).
