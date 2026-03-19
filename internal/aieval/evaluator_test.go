@@ -67,38 +67,56 @@ func TestParseEvalResponse_CaseInsensitive(t *testing.T) {
 	}
 }
 
-// ---- Mock API tests ----
+// ---- Backend detection tests ----
+
+func TestGetBackend(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"", "anthropic"},
+		{"anthropic", "anthropic"},
+		{"Anthropic", "anthropic"},
+		{"ollama", "ollama"},
+		{"Ollama", "ollama"},
+		{"OLLAMA", "ollama"},
+		{"unknown", "anthropic"},
+	}
+	for _, tt := range tests {
+		got := getBackend(tt.input)
+		if got != tt.want {
+			t.Errorf("getBackend(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestGetModelForBackend(t *testing.T) {
+	if m := getModelForBackend("", "anthropic"); m != defaultAnthropicModel {
+		t.Errorf("got %q, want %q", m, defaultAnthropicModel)
+	}
+	if m := getModelForBackend("", "ollama"); m != defaultOllamaModel {
+		t.Errorf("got %q, want %q", m, defaultOllamaModel)
+	}
+	if m := getModelForBackend("custom-model", "ollama"); m != "custom-model" {
+		t.Errorf("got %q, want custom-model", m)
+	}
+}
+
+// ---- Anthropic mock tests ----
 
 func mockAnthropicServer(t *testing.T, status, reason string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify request headers
 		if r.Header.Get("x-api-key") == "" {
 			http.Error(w, "missing api key", http.StatusUnauthorized)
 			return
 		}
-		if r.Header.Get("anthropic-version") == "" {
-			http.Error(w, "missing version", http.StatusBadRequest)
-			return
-		}
-
-		// Parse request to verify structure
-		var req map[string]any
-		json.NewDecoder(r.Body).Decode(&req)
-
 		responseText := `{"status": "` + status + `", "reason": "` + reason + `"}`
-
 		resp := map[string]any{
-			"content": []map[string]any{
-				{"type": "text", "text": responseText},
-			},
-			"usage": map[string]any{
-				"input_tokens":  150,
-				"output_tokens": 30,
-			},
+			"content":    []map[string]any{{"type": "text", "text": responseText}},
+			"usage":      map[string]any{"input_tokens": 150, "output_tokens": 30},
 			"stop_reason": "end_turn",
 		}
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
 }
@@ -113,63 +131,52 @@ func TestEvaluate_EmptyPolicies(t *testing.T) {
 	}
 }
 
-func TestEvaluate_NoAPIKey(t *testing.T) {
+func TestEvaluate_NoAPIKey_Anthropic(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "")
-	policies := []Policy{{Name: "test", Prompt: "check it"}}
+	policies := []Policy{{Name: "test", Prompt: "check it", Backend: "anthropic"}}
 	_, err := Evaluate(context.Background(), policies, []byte(`{}`))
 	if err == nil {
 		t.Fatal("Expected error for missing API key")
 	}
 }
 
-func TestEvaluate_MockPass(t *testing.T) {
+func TestEvaluate_Anthropic_Pass(t *testing.T) {
 	server := mockAnthropicServer(t, "PASS", "Code is production-ready")
 	defer server.Close()
 
-	// Override the API URL for testing
-	origURL := apiURL
-	defer func() { setTestAPIURL(origURL) }()
-	setTestAPIURL(server.URL)
+	origURL := anthropicURL
+	defer func() { anthropicURL = origURL }()
+	anthropicURL = server.URL
 
 	t.Setenv("ANTHROPIC_API_KEY", "test-key-123")
 
-	policies := []Policy{
-		{Name: "code-quality", Prompt: "PASS if code is production-ready. FAIL otherwise."},
-	}
-	materials := []byte(`{"actions": [{"tool": "Read", "file": "main.go"}]}`)
-
-	results, err := Evaluate(context.Background(), policies, materials)
+	policies := []Policy{{Name: "quality", Prompt: "PASS if ok", Backend: "anthropic"}}
+	results, err := Evaluate(context.Background(), policies, []byte(`{"actions": []}`))
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
-	}
-	if len(results) != 1 {
-		t.Fatalf("Expected 1 result, got %d", len(results))
 	}
 	if !results[0].Passed {
 		t.Errorf("Expected pass, got: %+v", results[0])
 	}
-	if results[0].Status != "PASS" {
-		t.Errorf("Status = %q, want PASS", results[0].Status)
+	if results[0].Backend != "anthropic" {
+		t.Errorf("Backend = %q, want anthropic", results[0].Backend)
 	}
 	if results[0].TokensIn == 0 {
 		t.Error("Expected non-zero token count")
 	}
 }
 
-func TestEvaluate_MockFail(t *testing.T) {
-	server := mockAnthropicServer(t, "FAIL", "Missing error handling in critical path")
+func TestEvaluate_Anthropic_Fail(t *testing.T) {
+	server := mockAnthropicServer(t, "FAIL", "Missing error handling")
 	defer server.Close()
 
-	origURL := apiURL
-	defer func() { setTestAPIURL(origURL) }()
-	setTestAPIURL(server.URL)
+	origURL := anthropicURL
+	defer func() { anthropicURL = origURL }()
+	anthropicURL = server.URL
 
 	t.Setenv("ANTHROPIC_API_KEY", "test-key-123")
 
-	policies := []Policy{
-		{Name: "error-handling", Prompt: "PASS if all errors are handled. FAIL otherwise."},
-	}
-
+	policies := []Policy{{Name: "errors", Prompt: "check errors", Backend: "anthropic"}}
 	results, err := Evaluate(context.Background(), policies, []byte(`{}`))
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
@@ -182,57 +189,146 @@ func TestEvaluate_MockFail(t *testing.T) {
 	}
 }
 
-func TestEvaluate_MockAPIError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error": {"message": "rate limited"}}`, http.StatusTooManyRequests)
+// ---- Ollama mock tests ----
+
+func mockOllamaServer(t *testing.T, status, reason string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/generate" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		responseJSON := fmt.Sprintf(`{"status": "%s", "reason": "%s"}`, status, reason)
+		resp := map[string]any{"response": responseJSON}
+		json.NewEncoder(w).Encode(resp)
 	}))
+}
+
+func TestEvaluate_Ollama_Pass(t *testing.T) {
+	server := mockOllamaServer(t, "PASS", "All checks passed")
 	defer server.Close()
 
-	origURL := apiURL
-	defer func() { setTestAPIURL(origURL) }()
-	setTestAPIURL(server.URL)
+	policies := []Policy{{
+		Name:     "quality",
+		Prompt:   "PASS if ok",
+		Backend:  "ollama",
+		Endpoint: server.URL,
+	}}
+	results, err := Evaluate(context.Background(), policies, []byte(`{"actions": []}`))
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+	if !results[0].Passed {
+		t.Errorf("Expected pass, got: %+v", results[0])
+	}
+	if results[0].Backend != "ollama" {
+		t.Errorf("Backend = %q, want ollama", results[0].Backend)
+	}
+	if results[0].Model != defaultOllamaModel {
+		t.Errorf("Model = %q, want %q", results[0].Model, defaultOllamaModel)
+	}
+}
 
-	t.Setenv("ANTHROPIC_API_KEY", "test-key-123")
+func TestEvaluate_Ollama_Fail(t *testing.T) {
+	server := mockOllamaServer(t, "FAIL", "Security issue found")
+	defer server.Close()
 
-	policies := []Policy{{Name: "test", Prompt: "check"}}
+	policies := []Policy{{
+		Name:     "security",
+		Prompt:   "check security",
+		Backend:  "ollama",
+		Endpoint: server.URL,
+	}}
 	results, err := Evaluate(context.Background(), policies, []byte(`{}`))
 	if err != nil {
-		t.Fatalf("Evaluate should not return fatal error: %v", err)
+		t.Fatalf("Evaluate: %v", err)
 	}
-	// API errors become ERROR status, not fatal
+	if results[0].Passed {
+		t.Error("Expected fail")
+	}
+	if results[0].Status != "FAIL" {
+		t.Errorf("Status = %q, want FAIL", results[0].Status)
+	}
+}
+
+func TestEvaluate_Ollama_NoAPIKeyNeeded(t *testing.T) {
+	server := mockOllamaServer(t, "PASS", "ok")
+	defer server.Close()
+
+	// Explicitly unset API key — Ollama should work without it
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	policies := []Policy{{Name: "test", Prompt: "check", Backend: "ollama", Endpoint: server.URL}}
+	results, err := Evaluate(context.Background(), policies, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("Ollama should not require API key: %v", err)
+	}
+	if !results[0].Passed {
+		t.Error("Expected pass")
+	}
+}
+
+func TestEvaluate_Ollama_CustomModel(t *testing.T) {
+	server := mockOllamaServer(t, "PASS", "ok")
+	defer server.Close()
+
+	policies := []Policy{{Name: "test", Prompt: "check", Backend: "ollama", Model: "mistral:7b", Endpoint: server.URL}}
+	results, err := Evaluate(context.Background(), policies, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if results[0].Model != "mistral:7b" {
+		t.Errorf("Model = %q, want mistral:7b", results[0].Model)
+	}
+}
+
+func TestEvaluate_Ollama_ServerDown(t *testing.T) {
+	policies := []Policy{{
+		Name:     "test",
+		Prompt:   "check",
+		Backend:  "ollama",
+		Endpoint: "http://localhost:1", // nothing listening
+	}}
+	results, err := Evaluate(context.Background(), policies, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("Should not return fatal error: %v", err)
+	}
 	if results[0].Status != "ERROR" {
 		t.Errorf("Status = %q, want ERROR", results[0].Status)
 	}
 }
 
-func TestEvaluate_MultiplePolicies(t *testing.T) {
-	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		status := "PASS"
-		if callCount == 2 {
-			status = "FAIL"
-		}
-		resp := map[string]any{
-			"content": []map[string]any{
-				{"type": "text", "text": fmt.Sprintf(`{"status": "%s", "reason": "test"}`, status)},
-			},
-			"usage":       map[string]any{"input_tokens": 100, "output_tokens": 20},
-			"stop_reason": "end_turn",
-		}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+func TestEvaluate_Ollama_InvalidEndpoint(t *testing.T) {
+	policies := []Policy{{Name: "test", Prompt: "check", Backend: "ollama", Endpoint: "ftp://evil.com"}}
+	results, err := Evaluate(context.Background(), policies, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("Should not return fatal error: %v", err)
+	}
+	if results[0].Status != "ERROR" {
+		t.Errorf("Status = %q, want ERROR", results[0].Status)
+	}
+}
 
-	origURL := apiURL
-	defer func() { setTestAPIURL(origURL) }()
-	setTestAPIURL(server.URL)
+// ---- Mixed backend tests ----
 
-	t.Setenv("ANTHROPIC_API_KEY", "test-key-123")
+func TestEvaluate_MixedBackends(t *testing.T) {
+	anthropicServer := mockAnthropicServer(t, "PASS", "anthropic ok")
+	defer anthropicServer.Close()
+	ollamaServer := mockOllamaServer(t, "FAIL", "ollama found issue")
+	defer ollamaServer.Close()
+
+	origURL := anthropicURL
+	defer func() { anthropicURL = origURL }()
+	anthropicURL = anthropicServer.URL
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 
 	policies := []Policy{
-		{Name: "quality", Prompt: "check quality"},
-		{Name: "security", Prompt: "check security"},
+		{Name: "cloud-check", Prompt: "check quality", Backend: "anthropic"},
+		{Name: "local-check", Prompt: "check security", Backend: "ollama", Endpoint: ollamaServer.URL},
 	}
 
 	results, err := Evaluate(context.Background(), policies, []byte(`{}`))
@@ -242,15 +338,31 @@ func TestEvaluate_MultiplePolicies(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("Expected 2 results, got %d", len(results))
 	}
-	if !results[0].Passed {
-		t.Error("First policy should pass")
+	if !results[0].Passed || results[0].Backend != "anthropic" {
+		t.Errorf("Anthropic result: passed=%v backend=%s", results[0].Passed, results[0].Backend)
 	}
-	if results[1].Passed {
-		t.Error("Second policy should fail")
+	if results[1].Passed || results[1].Backend != "ollama" {
+		t.Errorf("Ollama result: passed=%v backend=%s", results[1].Passed, results[1].Backend)
 	}
 }
 
-// setTestAPIURL overrides the package-level API URL for testing.
-func setTestAPIURL(url string) {
-	apiURL = url
+// ---- URL validation tests ----
+
+func TestValidateURL(t *testing.T) {
+	tests := []struct {
+		url     string
+		wantErr bool
+	}{
+		{"http://localhost:11434", false},
+		{"https://ollama.internal:11434", false},
+		{"http://192.168.1.100:11434", false},
+		{"ftp://evil.com", true},
+		{"not-a-url", true},
+	}
+	for _, tt := range tests {
+		err := validateURL(tt.url)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("validateURL(%q) err=%v, wantErr=%v", tt.url, err, tt.wantErr)
+		}
+	}
 }

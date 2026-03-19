@@ -30,7 +30,7 @@ import (
 func main() {
 	fmt.Println("============================================================")
 	fmt.Println("  aflock 6-Phase Verification Pipeline — Integration Test")
-	fmt.Println("  Phases: 1 (Signature) | 2 (Identity) | 3 (Merkle) | 4 (Rego)")
+	fmt.Println("  Phases: 1 (Sig) | 2 (Identity) | 3 (Merkle) | 4 (Rego) | 5 (AI) | 6 (Sublayout)")
 	fmt.Println("============================================================")
 	fmt.Println()
 
@@ -371,8 +371,131 @@ func run() error {
 	runVerify(binary, "--session", sessID8)
 
 	// ================================================================
+	// TEST 10: Phase 6 PASS — sublayout recursion with valid child
+	// ================================================================
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("TEST 10: Phase 6 PASS — sublayout with valid child session")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("  Parent: main-task ($2.00 spend)")
+	fmt.Println("  Child:  research-agent ($1.00 spend, limit $5.00)")
+	fmt.Println("  Attenuation: child $5 ≤ parent $10 ✓")
+	fmt.Println("")
+
+	sessChild10 := "sim-child-pass"
+	createSession(sessChild10, &aflock.SessionState{
+		SessionID: sessChild10, StartedAt: time.Now().Add(-3 * time.Minute),
+		ParentSessionID: "sim-parent-pass",
+		Policy:          &aflock.Policy{Name: "research-agent", Version: "1.0"},
+		Metrics:         &aflock.SessionMetrics{CostUSD: 1.00, Turns: 3, ToolCalls: 5, Tools: map[string]int{"Read": 3, "Grep": 2}},
+		Actions:         []aflock.ActionRecord{{Timestamp: time.Now(), ToolName: "Read", ToolUseID: "c1", Decision: "allow"}},
+	})
+	defer deleteSession(sessChild10)
+
+	sessPar10 := "sim-parent-pass"
+	createSession(sessPar10, &aflock.SessionState{
+		SessionID: sessPar10, StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name: "main-task", Version: "1.0",
+			Limits: &aflock.LimitsPolicy{MaxSpendUSD: &aflock.Limit{Value: 10.0, Enforcement: "fail-fast"}},
+			Sublayouts: []aflock.Sublayout{{
+				Name: "research-agent", Policy: "research.aflock",
+				Limits: &aflock.LimitsPolicy{MaxSpendUSD: &aflock.Limit{Value: 5.0}},
+			}},
+		},
+		Metrics:         &aflock.SessionMetrics{CostUSD: 2.00, Turns: 5, ToolCalls: 8, Tools: map[string]int{"Edit": 4, "Bash": 4}},
+		Actions:         []aflock.ActionRecord{{Timestamp: time.Now(), ToolName: "Edit", ToolUseID: "p1", Decision: "allow"}},
+		ChildSessionIDs: []string{sessChild10},
+	})
+	defer deleteSession(sessPar10)
+
+	runVerify(binary, "--session", sessPar10)
+
+	// ================================================================
+	// TEST 11: Phase 6 FAIL — attenuation violation
+	// ================================================================
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("TEST 11: Phase 6 FAIL — sublayout attenuation violation")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("  Parent limit: $5.00")
+	fmt.Println("  Child limit:  $20.00 — ESCALATION! (child > parent)")
+	fmt.Println("")
+
+	sessChild11 := "sim-child-att"
+	createSession(sessChild11, &aflock.SessionState{
+		SessionID: sessChild11, StartedAt: time.Now(),
+		ParentSessionID: "sim-parent-att",
+		Policy:          &aflock.Policy{Name: "sub-agent", Version: "1.0"},
+		Metrics:         &aflock.SessionMetrics{Tools: map[string]int{}},
+	})
+	defer deleteSession(sessChild11)
+
+	sessPar11 := "sim-parent-att"
+	createSession(sessPar11, &aflock.SessionState{
+		SessionID: sessPar11, StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name: "parent-att", Version: "1.0",
+			Limits: &aflock.LimitsPolicy{MaxSpendUSD: &aflock.Limit{Value: 5.0}},
+			Sublayouts: []aflock.Sublayout{{
+				Name: "sub-agent", Policy: "sub.aflock",
+				Limits: &aflock.LimitsPolicy{MaxSpendUSD: &aflock.Limit{Value: 20.0}}, // VIOLATION
+			}},
+		},
+		Metrics:         &aflock.SessionMetrics{Tools: map[string]int{}},
+		ChildSessionIDs: []string{sessChild11},
+	})
+	defer deleteSession(sessPar11)
+
+	runVerify(binary, "--session", sessPar11)
+
+	// ================================================================
+	// TEST 12: Phase 6 FAIL — child session violates its own policy
+	// ================================================================
+	fmt.Println("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("TEST 12: Phase 6 FAIL — child violates its own Rego policy")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("  Child Rego: deny if spend > $2.00")
+	fmt.Println("  Child spent: $5.00 → DENIED, propagates to parent")
+	fmt.Println("")
+
+	sessChild12 := "sim-child-rego"
+	createSession(sessChild12, &aflock.SessionState{
+		SessionID: sessChild12, StartedAt: time.Now().Add(-2 * time.Minute),
+		ParentSessionID: "sim-parent-childrego",
+		Policy: &aflock.Policy{
+			Name: "research-agent", Version: "1.0",
+			Evaluators: &aflock.EvaluatorsPolicy{
+				Rego: []aflock.RegoEvaluator{{
+					Name:   "child-budget",
+					Policy: "package aflock\ndeny[msg] {\n  input.metrics.costUSD > 2.0\n  msg := sprintf(\"Child spend $%.2f exceeds $2.00 budget\", [input.metrics.costUSD])\n}",
+				}},
+			},
+		},
+		Metrics: &aflock.SessionMetrics{CostUSD: 5.00, Turns: 10, ToolCalls: 15, Tools: map[string]int{"Read": 10, "Grep": 5}},
+		Actions: []aflock.ActionRecord{{Timestamp: time.Now(), ToolName: "Read", ToolUseID: "c1", Decision: "allow"}},
+	})
+	defer deleteSession(sessChild12)
+
+	sessPar12 := "sim-parent-childrego"
+	createSession(sessPar12, &aflock.SessionState{
+		SessionID: sessPar12, StartedAt: time.Now().Add(-5 * time.Minute),
+		Policy: &aflock.Policy{
+			Name: "main-task", Version: "1.0",
+			Limits: &aflock.LimitsPolicy{MaxSpendUSD: &aflock.Limit{Value: 20.0}},
+			Sublayouts: []aflock.Sublayout{{
+				Name: "research-agent", Policy: "research.aflock",
+				Limits: &aflock.LimitsPolicy{MaxSpendUSD: &aflock.Limit{Value: 10.0}},
+			}},
+		},
+		Metrics:         &aflock.SessionMetrics{CostUSD: 3.00, Tools: map[string]int{"Edit": 5}},
+		ChildSessionIDs: []string{sessChild12},
+	})
+	defer deleteSession(sessPar12)
+
+	runVerify(binary, "--session", sessPar12)
+
+	// ================================================================
 	fmt.Println("\n============================================================")
-	fmt.Println("  All tests complete!")
+	fmt.Println("  All tests complete! (12 scenarios across 6 phases)")
 	fmt.Println("============================================================")
 	return nil
 }

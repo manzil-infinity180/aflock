@@ -1217,9 +1217,11 @@ func evaluateSessionAI(sessionState *aflock.SessionState) []string {
 	policies := make([]aieval.Policy, len(sessionState.Policy.Evaluators.AI))
 	for i, eval := range sessionState.Policy.Evaluators.AI {
 		policies[i] = aieval.Policy{
-			Name:   eval.Name,
-			Prompt: eval.Prompt,
-			Model:  eval.Model,
+			Name:     eval.Name,
+			Prompt:   eval.Prompt,
+			Model:    eval.Model,
+			Backend:  eval.Backend,
+			Endpoint: eval.Endpoint,
 		}
 	}
 
