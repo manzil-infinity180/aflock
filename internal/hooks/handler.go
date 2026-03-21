@@ -413,17 +413,20 @@ func (h *Handler) createAttestation(sessionState *aflock.SessionState, input *af
 		agentIdentity, _ = identity.DiscoverAgentIdentity()
 	}
 
-	// Create signer — try SPIRE first, fall back to ephemeral key
+	// Create signer — try SPIRE first, then Fulcio keyless, fall back to ephemeral key
 	signer := attestation.NewSigner("")
 	if err := signer.Initialize(context.Background()); err != nil {
-		// SPIRE not available — use ephemeral key
-		identityHash := ""
-		if agentIdentity != nil {
-			identityHash = agentIdentity.IdentityHash
-		}
-		if err := signer.InitializeEphemeral(identityHash); err != nil {
-			fmt.Fprintf(os.Stderr, "[aflock] Warning: attestation signing unavailable: %v\n", err)
-			return
+		// SPIRE not available — try Fulcio keyless (CI/CD environments with OIDC)
+		if fulcioErr := signer.InitializeFulcio(context.Background()); fulcioErr != nil {
+			// Fulcio not available — use ephemeral key
+			identityHash := ""
+			if agentIdentity != nil {
+				identityHash = agentIdentity.IdentityHash
+			}
+			if err := signer.InitializeEphemeral(identityHash); err != nil {
+				fmt.Fprintf(os.Stderr, "[aflock] Warning: attestation signing unavailable: %v\n", err)
+				return
+			}
 		}
 	}
 	defer signer.Close() //nolint:errcheck // best-effort cleanup
