@@ -444,6 +444,9 @@ type SessionState struct {
 	ParentSessionID string `json:"parent_session_id,omitempty"`
 	// ChildSessionIDs tracks subagent sessions spawned from this session
 	ChildSessionIDs []string `json:"child_session_ids,omitempty"`
+	// AuthToken is the JWT issued at SessionStart for request-level authorization.
+	// Scoped to the session, agent identity, and policy grants.
+	AuthToken string `json:"auth_token,omitempty"`
 }
 
 // PropagationRecord is written by a parent session's PreToolUse(Agent) hook
