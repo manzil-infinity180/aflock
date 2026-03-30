@@ -38,9 +38,10 @@ const (
 
 // Signer creates and signs attestations.
 type Signer struct {
-	spireClient *identity.SpireClient
-	identity    *identity.Identity
-	modelName   string
+	spireClient    *identity.SpireClient
+	identity       *identity.Identity
+	modelName      string
+	fulcioX509Signer *cryptoutil.X509Signer // Non-nil when using Fulcio keyless signing
 }
 
 // NewSigner creates a new attestation signer.
@@ -272,16 +273,21 @@ func (s *Signer) CreateActionAttestation(
 
 // Sign signs a statement and returns a DSSE envelope.
 func (s *Signer) Sign(ctx context.Context, statement Statement) (*Envelope, error) {
-	// Get the appropriate signing identity (delegated or aflock's)
-	signingIdentity, _ := s.GetSigningIdentity()
-	if signingIdentity == nil {
-		return nil, fmt.Errorf("no signing identity available")
-	}
-
 	// Serialize statement
 	payload, err := json.Marshal(statement)
 	if err != nil {
 		return nil, fmt.Errorf("marshal statement: %w", err)
+	}
+
+	// Use Fulcio signing path if available (rookery signer handles its own hashing)
+	if s.IsFulcioSigning() {
+		return s.signFulcioEnvelope(PayloadType, payload)
+	}
+
+	// Get the appropriate signing identity (delegated or aflock's)
+	signingIdentity, _ := s.GetSigningIdentity()
+	if signingIdentity == nil {
+		return nil, fmt.Errorf("no signing identity available")
 	}
 
 	// Base64 encode payload

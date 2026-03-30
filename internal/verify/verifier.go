@@ -821,13 +821,30 @@ func (v *Verifier) verifyStepAttestation(attestPath string, step *aflock.Step, p
 	}
 
 	// Verify signatures against functionaries
-	if len(pol.Roots) == 0 {
+	// Allow keyless-only policies without explicit roots
+	hasKeyless := false
+	for _, f := range step.Functionaries {
+		if f.Type == "keyless" {
+			hasKeyless = true
+			break
+		}
+	}
+
+	if len(pol.Roots) == 0 && !hasKeyless {
 		return fmt.Errorf("policy has no trusted roots: signature verification cannot be performed")
 	}
 
 	trustedCerts, err := loadRootCertificates(pol.Roots)
 	if err != nil {
 		return fmt.Errorf("load root certificates: %w", err)
+	}
+
+	// Add Fulcio public root CA if any functionary is keyless
+	if hasKeyless {
+		fulcioRoot, err := loadFulcioRoot()
+		if err == nil {
+			trustedCerts = append(trustedCerts, fulcioRoot)
+		}
 	}
 
 	if len(trustedCerts) == 0 {
@@ -951,6 +968,13 @@ func matchesFunctionary(cert *x509.Certificate, keyID string, step *aflock.Step)
 		// CertConstraint match: verify certificate attributes against constraints
 		if f.CertConstraint != nil {
 			if certMatchesConstraint(cert, f.CertConstraint) {
+				return true
+			}
+		}
+
+		// Keyless/Sigstore match: verify Fulcio certificate extensions against OIDC constraints
+		if f.Type == "keyless" {
+			if matchesKeylessFunctionary(cert, f) {
 				return true
 			}
 		}

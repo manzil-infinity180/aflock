@@ -176,9 +176,32 @@ type Step struct {
 
 // StepFunctionary defines who can sign attestations for a step.
 type StepFunctionary struct {
-	Type           string          `json:"type"` // "root", "publickey"
+	Type           string          `json:"type"` // "root", "publickey", "keyless"
 	CertConstraint *CertConstraint `json:"certConstraint,omitempty"`
 	PublicKeyID    string          `json:"publickeyid,omitempty"`
+
+	// Keyless/Sigstore verification constraints (for type: "keyless")
+	// Issuer is the expected OIDC issuer URL embedded in the Fulcio certificate
+	// (e.g., "https://token.actions.githubusercontent.com")
+	Issuer string `json:"issuer,omitempty"`
+	// Subject is the expected OIDC subject (email or URI SAN), supports glob patterns
+	// (e.g., "https://github.com/aflock-ai/aflock/.github/workflows/*")
+	Subject string `json:"subject,omitempty"`
+	// FulcioExtensions constrains Fulcio-specific certificate extensions (GitHub Actions fields)
+	FulcioExtensions *FulcioExtensions `json:"fulcioExtensions,omitempty"`
+}
+
+// FulcioExtensions defines constraints on Fulcio certificate extensions.
+// All non-empty fields must match (AND logic). Supports glob patterns.
+type FulcioExtensions struct {
+	Issuer                   string `json:"issuer,omitempty"`
+	BuildTrigger             string `json:"buildTrigger,omitempty"`
+	SourceRepositoryURI      string `json:"sourceRepositoryURI,omitempty"`
+	SourceRepositoryRef      string `json:"sourceRepositoryRef,omitempty"`
+	SourceRepositoryOwnerURI string `json:"sourceRepositoryOwnerURI,omitempty"`
+	RunnerEnvironment        string `json:"runnerEnvironment,omitempty"`
+	BuildSignerURI           string `json:"buildSignerURI,omitempty"`
+	BuildSignerDigest        string `json:"buildSignerDigest,omitempty"`
 }
 
 // CertConstraint defines constraints on certificate attributes.
