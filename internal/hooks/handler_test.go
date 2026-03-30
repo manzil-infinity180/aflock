@@ -2037,6 +2037,194 @@ func TestHandlePreToolUse_ExpiredPolicy_SessionState_Denies(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
+// ----- Stop: fake attestation file (no DSSE structure) is rejected -----
+
+func TestHandleStop_FakeAttestationRejected(t *testing.T) {
+	h := newTestHandler(t)
+	pol := &aflock.Policy{
+		Name:                 "test-fake-attest",
+		RequiredAttestations: []string{"security-review"},
+	}
+	seedSession(t, h, "session-fake-attest", pol)
+
+	attestDir := h.stateManager.AttestationsDir("session-fake-attest")
+	os.MkdirAll(attestDir, 0755)
+
+	// Write a fake attestation file that exists but has no valid DSSE structure
+	os.WriteFile(filepath.Join(attestDir, "security-review.json"), []byte(`{}`), 0644)
+
+	input := &aflock.HookInput{SessionID: "session-fake-attest"}
+
+	got := captureStdout(t, func() {
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out.Decision != "block" {
+		t.Errorf("expected block for fake attestation file, got %q", out.Decision)
+	}
+	if !strings.Contains(out.Reason, "missing required attestations") {
+		t.Errorf("expected 'missing required attestations' in reason, got: %s", out.Reason)
+	}
+}
+
+func TestHandleStop_EmptySignaturesRejected(t *testing.T) {
+	h := newTestHandler(t)
+	pol := &aflock.Policy{
+		Name:                 "test-empty-sig",
+		RequiredAttestations: []string{"build"},
+	}
+	seedSession(t, h, "session-empty-sig", pol)
+
+	attestDir := h.stateManager.AttestationsDir("session-empty-sig")
+	os.MkdirAll(attestDir, 0755)
+
+	// Attestation with payload and payloadType but empty signatures array
+	os.WriteFile(filepath.Join(attestDir, "build.json"),
+		[]byte(`{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json","signatures":[]}`), 0644)
+
+	input := &aflock.HookInput{SessionID: "session-empty-sig"}
+
+	got := captureStdout(t, func() {
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out.Decision != "block" {
+		t.Errorf("expected block for attestation with empty signatures, got %q", out.Decision)
+	}
+}
+
+func TestValidateAttestationIntegrity(t *testing.T) {
+	dir := t.TempDir()
+
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"valid DSSE", `{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json","signatures":[{"keyid":"k","sig":"s"}]}`, true},
+		{"empty object", `{}`, false},
+		{"missing signatures", `{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json"}`, false},
+		{"empty signatures", `{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json","signatures":[]}`, false},
+		{"missing payload", `{"payloadType":"application/vnd.in-toto+json","signatures":[{"keyid":"k","sig":"s"}]}`, false},
+		{"missing payloadType", `{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","signatures":[{"keyid":"k","sig":"s"}]}`, false},
+		{"not JSON", `this is not json`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(dir, tt.name+".json")
+			os.WriteFile(path, []byte(tt.content), 0644)
+			got := validateAttestationIntegrity(path)
+			if got != tt.want {
+				t.Errorf("validateAttestationIntegrity(%q) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+
+	// Non-existent file
+	t.Run("non-existent", func(t *testing.T) {
+		if validateAttestationIntegrity(filepath.Join(dir, "nope.json")) {
+			t.Error("expected false for non-existent file")
+		}
+	})
+}
+
+// ----- PreToolUse: identity constraints without SessionStart -> deny -----
+
+func TestHandlePreToolUse_IdentityConstraints_NoSessionStart_Denies(t *testing.T) {
+	h := newTestHandler(t)
+
+	// Create a policy file with identity constraints in a temp directory
+	policyDir := t.TempDir()
+	pol := aflock.Policy{
+		Name: "identity-required",
+		Identity: &aflock.IdentityPolicy{
+			AllowedModels: []string{"claude-3-opus"},
+		},
+	}
+	polBytes, _ := json.Marshal(pol)
+	os.WriteFile(filepath.Join(policyDir, ".aflock"), polBytes, 0644)
+
+	// Call handlePreToolUse WITHOUT prior handleSessionStart — no session state exists
+	input := &aflock.HookInput{
+		SessionID: "session-no-start",
+		Cwd:       policyDir,
+		ToolName:  "Bash",
+		ToolInput: json.RawMessage(`{"command": "echo hello"}`),
+	}
+
+	got := captureStdout(t, func() {
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("parse: %v (raw: %s)", err, got)
+	}
+
+	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionDeny {
+		t.Fatalf("expected deny when identity constraints exist but SessionStart was skipped, got %s",
+			out.HookSpecificOutput.PermissionDecision)
+	}
+	if !strings.Contains(out.HookSpecificOutput.PermissionDecisionReason, "identity verification") {
+		t.Errorf("expected reason about identity verification, got: %s", out.HookSpecificOutput.PermissionDecisionReason)
+	}
+}
+
+func TestHandlePreToolUse_NoIdentityConstraints_NoSessionStart_Allows(t *testing.T) {
+	h := newTestHandler(t)
+
+	// Create a policy file WITHOUT identity constraints
+	policyDir := t.TempDir()
+	pol := aflock.Policy{
+		Name: "no-identity",
+		Tools: &aflock.ToolsPolicy{
+			Allow: []string{"*"},
+		},
+	}
+	polBytes, _ := json.Marshal(pol)
+	os.WriteFile(filepath.Join(policyDir, ".aflock"), polBytes, 0644)
+
+	// Call handlePreToolUse WITHOUT prior handleSessionStart
+	input := &aflock.HookInput{
+		SessionID: "session-no-start-2",
+		Cwd:       policyDir,
+		ToolName:  "Read",
+		ToolInput: json.RawMessage(`{"file_path": "/tmp/test.txt"}`),
+	}
+
+	got := captureStdout(t, func() {
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("parse: %v (raw: %s)", err, got)
+	}
+
+	// Without identity constraints, ephemeral session should still work
+	if out.HookSpecificOutput.PermissionDecision == aflock.DecisionDeny {
+		t.Fatalf("expected allow when no identity constraints, got deny: %s",
+			out.HookSpecificOutput.PermissionDecisionReason)
+	}
+}
+
 		if err := h.handlePreToolUse(input); err != nil {
 			t.Fatalf("handlePreToolUse error: %v", err)
 		}
