@@ -332,9 +332,11 @@ type RegoEvaluator struct {
 
 // AIEvaluator defines an AI-based evaluator.
 type AIEvaluator struct {
-	Name   string `json:"name"`
-	Prompt string `json:"prompt"`
-	Model  string `json:"model,omitempty"`
+	Name     string `json:"name"`
+	Prompt   string `json:"prompt"`
+	Model    string `json:"model,omitempty"`
+	Backend  string `json:"backend,omitempty"`  // "anthropic" (default) or "ollama"
+	Endpoint string `json:"endpoint,omitempty"` // Ollama server URL (default: http://localhost:11434)
 }
 
 // GRPCEvaluator defines a gRPC-based evaluator.
