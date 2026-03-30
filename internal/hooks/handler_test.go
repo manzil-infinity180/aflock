@@ -2089,6 +2089,26 @@ func TestHandlePreToolUse_ExpiredPolicy_SessionState_Denies(t *testing.T) {
 	}
 
 	got := captureStdout(t, func() {
+		if err := h.handlePreToolUse(input); err != nil {
+			t.Fatalf("handlePreToolUse error: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("parse output: %v (raw: %s)", err, got)
+	}
+	if out.HookSpecificOutput == nil {
+		t.Fatal("expected hookSpecificOutput")
+	}
+	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionDeny {
+		t.Errorf("expected deny for expired policy, got %v", out.HookSpecificOutput.PermissionDecision)
+	}
+	if !strings.Contains(out.HookSpecificOutput.PermissionDecisionReason, "expired") {
+		t.Errorf("expected reason to mention 'expired', got: %s", out.HookSpecificOutput.PermissionDecisionReason)
+	}
+}
+
 // ----- Stop: fake attestation file (no DSSE structure) is rejected -----
 
 func TestHandleStop_FakeAttestationRejected(t *testing.T) {
@@ -2274,26 +2294,6 @@ func TestHandlePreToolUse_NoIdentityConstraints_NoSessionStart_Allows(t *testing
 	if out.HookSpecificOutput.PermissionDecision == aflock.DecisionDeny {
 		t.Fatalf("expected allow when no identity constraints, got deny: %s",
 			out.HookSpecificOutput.PermissionDecisionReason)
-	}
-}
-
-		if err := h.handlePreToolUse(input); err != nil {
-			t.Fatalf("handlePreToolUse error: %v", err)
-		}
-	})
-
-	var out aflock.HookOutput
-	if err := json.Unmarshal([]byte(got), &out); err != nil {
-		t.Fatalf("parse output: %v (raw: %s)", err, got)
-	}
-	if out.HookSpecificOutput == nil {
-		t.Fatal("expected hookSpecificOutput")
-	}
-	if out.HookSpecificOutput.PermissionDecision != aflock.DecisionDeny {
-		t.Errorf("expected deny for expired policy, got %v", out.HookSpecificOutput.PermissionDecision)
-	}
-	if !strings.Contains(out.HookSpecificOutput.PermissionDecisionReason, "expired") {
-		t.Errorf("expected reason to mention 'expired', got: %s", out.HookSpecificOutput.PermissionDecisionReason)
 	}
 }
 

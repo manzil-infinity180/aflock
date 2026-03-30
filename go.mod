@@ -12,6 +12,7 @@ require (
 	github.com/aflock-ai/rookery/plugins/signers/fulcio v0.1.0
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/gobwas/glob v0.2.3
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/mcp-go v0.43.2
 	github.com/open-policy-agent/opa v1.13.1

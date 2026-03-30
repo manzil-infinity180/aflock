@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aflock-ai/aflock/internal/attestation"
+	"github.com/aflock-ai/aflock/internal/auth"
 	"github.com/aflock-ai/aflock/internal/identity"
 	"github.com/aflock-ai/aflock/internal/output"
 	"github.com/aflock-ai/aflock/internal/policy"
@@ -163,6 +164,35 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 		}
 		fmt.Fprintf(os.Stderr, "[aflock] Inherited %d materials from parent session %s\n",
 			len(prop.Materials), prop.ParentSessionID)
+	}
+
+	// Issue JWT for this session — binds agent identity, policy, and grants
+	issuer, jwtErr := auth.NewTokenIssuer()
+	if jwtErr != nil {
+		fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to create token issuer: %v\n", jwtErr)
+	} else {
+		ttl := 1 * time.Hour
+		if pol.Limits != nil && pol.Limits.MaxWallTimeSeconds != nil {
+			ttl = time.Duration(pol.Limits.MaxWallTimeSeconds.Value) * time.Second
+		}
+
+		agentSPIFFEID := "unknown"
+		if spiffeID, spiffeErr := agentIdentity.ToSPIFFEID("aflock.ai"); spiffeErr == nil {
+			agentSPIFFEID = spiffeID.String()
+		}
+		token, tokenErr := issuer.IssueToken(
+			input.SessionID,
+			agentSPIFFEID,
+			agentIdentity.IdentityHash,
+			pol,
+			ttl,
+		)
+		if tokenErr != nil {
+			fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to issue JWT: %v\n", tokenErr)
+		} else {
+			sessionState.AuthToken = token
+			fmt.Fprintf(os.Stderr, "[aflock] JWT issued for session %s (ttl=%s)\n", input.SessionID, ttl)
+		}
 	}
 
 	if err := h.stateManager.Save(sessionState); err != nil {

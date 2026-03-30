@@ -471,6 +471,9 @@ type SessionState struct {
 	ChildSessionIDs []string `json:"child_session_ids,omitempty"`
 	// AgentIdentityMeta stores identity discovered at SessionStart for reuse in PostToolUse
 	AgentIdentityMeta *AgentIdentityMeta `json:"agent_identity_meta,omitempty"`
+	// AuthToken is the JWT issued at SessionStart for request-level authorization.
+	// Scoped to the session, agent identity, and policy grants.
+	AuthToken string `json:"auth_token,omitempty"`
 }
 
 // AgentIdentityMeta stores agent identity metadata in session state.
