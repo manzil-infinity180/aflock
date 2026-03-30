@@ -2,6 +2,7 @@
 package hooks
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aflock-ai/aflock/internal/attestation"
 	"github.com/aflock-ai/aflock/internal/identity"
 	"github.com/aflock-ai/aflock/internal/output"
 	"github.com/aflock-ai/aflock/internal/policy"
@@ -128,6 +130,25 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 
 	// Initialize session state
 	sessionState := h.stateManager.Initialize(input.SessionID, pol, policyPath)
+
+	// Save agent identity metadata for reuse in PostToolUse attestations
+	sessionState.AgentIdentityMeta = &aflock.AgentIdentityMeta{
+		Model:        agentIdentity.Model,
+		ModelVersion: agentIdentity.ModelVersion,
+		IdentityHash: agentIdentity.IdentityHash,
+		PolicyDigest: agentIdentity.PolicyDigest,
+		Environment: func() string {
+			if agentIdentity.Environment != nil {
+				return agentIdentity.Environment.Type
+			}
+			return ""
+		}(),
+	}
+	if agentIdentity.Binary != nil {
+		sessionState.AgentIdentityMeta.BinaryName = agentIdentity.Binary.Name
+		sessionState.AgentIdentityMeta.BinaryVer = agentIdentity.Binary.Version
+		sessionState.AgentIdentityMeta.BinaryDigest = agentIdentity.Binary.Digest
+	}
 
 	// Check for propagation from a parent session (sublayout delegation).
 	// If found, inherit materials and attenuate limits.
@@ -384,7 +405,120 @@ func (h *Handler) handlePostToolUse(input *aflock.HookInput) error {
 		}
 	}
 
+	// Create and store attestation for this tool call
+	h.createAttestation(sessionState, input)
+
 	return output.WriteEmpty()
+}
+
+// createAttestation creates a signed attestation for a tool call and stores it on disk.
+// Failures are logged as warnings — attestation is evidence, not enforcement.
+// Uses identity metadata saved in session state from SessionStart to avoid
+// re-discovering identity (and the noisy PID-walking warnings) on every tool call.
+func (h *Handler) createAttestation(sessionState *aflock.SessionState, input *aflock.HookInput) {
+	if sessionState == nil || sessionState.Policy == nil {
+		return
+	}
+
+	// Reconstruct agent identity from session state (saved at SessionStart)
+	// instead of re-discovering via PID walking on every PostToolUse call.
+	// If the saved model is "unknown", try re-discovering — SessionStart may
+	// have failed to find the model (e.g., new project with no session files)
+	// but PostToolUse might succeed if Claude session files now exist.
+	var agentIdentity *identity.AgentIdentity
+	if meta := sessionState.AgentIdentityMeta; meta != nil && meta.Model != "" && meta.Model != "unknown" {
+		agentIdentity = &identity.AgentIdentity{
+			Model:        meta.Model,
+			ModelVersion: meta.ModelVersion,
+			IdentityHash: meta.IdentityHash,
+			PolicyDigest: meta.PolicyDigest,
+		}
+		if meta.BinaryName != "" {
+			agentIdentity.Binary = &identity.BinaryIdentity{
+				Name:    meta.BinaryName,
+				Version: meta.BinaryVer,
+				Digest:  meta.BinaryDigest,
+			}
+		}
+		if meta.Environment != "" {
+			agentIdentity.Environment = &identity.EnvironmentIdentity{
+				Type: meta.Environment,
+			}
+		}
+	} else {
+		// Saved identity has unknown model — try fresh discovery
+		agentIdentity, _ = identity.DiscoverAgentIdentity()
+	}
+
+	// Create signer — try SPIRE first, fall back to ephemeral key
+	signer := attestation.NewSigner("")
+	if err := signer.Initialize(context.Background()); err != nil {
+		// SPIRE not available — use ephemeral key
+		identityHash := ""
+		if agentIdentity != nil {
+			identityHash = agentIdentity.IdentityHash
+		}
+		if err := signer.InitializeEphemeral(identityHash); err != nil {
+			fmt.Fprintf(os.Stderr, "[aflock] Warning: attestation signing unavailable: %v\n", err)
+			return
+		}
+	}
+	defer signer.Close() //nolint:errcheck // best-effort cleanup
+
+	// Build action record
+	toolUseID := input.ToolUseID
+	if toolUseID == "" {
+		toolUseID = fmt.Sprintf("%s-%d", input.ToolName, time.Now().UnixNano())
+	}
+
+	record := aflock.ActionRecord{
+		Timestamp: time.Now(),
+		ToolName:  input.ToolName,
+		ToolUseID: toolUseID,
+		ToolInput: input.ToolInput,
+		Decision:  "allow",
+	}
+
+	// Create signed attestation
+	envelope, err := signer.CreateActionAttestation(
+		context.Background(),
+		record,
+		sessionState.SessionID,
+		sessionState.Metrics,
+		agentIdentity,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[aflock] Warning: attestation creation failed: %v\n", err)
+		return
+	}
+
+	// Store attestation to disk
+	attestDir := h.stateManager.AttestationsDir(sessionState.SessionID)
+	if err := os.MkdirAll(attestDir, 0750); err != nil {
+		fmt.Fprintf(os.Stderr, "[aflock] Warning: create attestation dir: %v\n", err)
+		return
+	}
+
+	ts := time.Now().Format("20060102-150405")
+	prefix := toolUseID
+	if len(prefix) > 8 {
+		prefix = prefix[:8]
+	}
+	filename := fmt.Sprintf("%s-%s.intoto.json", ts, prefix)
+	path := filepath.Join(attestDir, filename)
+
+	data, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[aflock] Warning: marshal attestation: %v\n", err)
+		return
+	}
+
+	if err := os.WriteFile(path, data, 0640); err != nil {
+		fmt.Fprintf(os.Stderr, "[aflock] Warning: write attestation: %v\n", err)
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "[aflock] Attestation signed: %s\n", filename)
 }
 
 // handlePermissionRequest auto-approves or denies based on policy.
@@ -438,18 +572,28 @@ func (h *Handler) handleStop(input *aflock.HookInput) error {
 		return output.Write(output.StopAllow())
 	}
 
-	// Check if required attestations are present
+	// Check required attestations — only for tools that were actually used.
+	// Policy constrains what must be attested, it doesn't instruct the agent
+	// to use tools it wasn't asked to use. If the user never used Bash,
+	// don't block Stop for a missing Bash attestation.
 	if len(sessionState.Policy.RequiredAttestations) > 0 {
+		usedTools := make(map[string]bool)
+		for _, action := range sessionState.Actions {
+			if action.Decision == "allow" {
+				usedTools[action.ToolName] = true
+			}
+		}
+
 		attestDir := h.stateManager.AttestationsDir(input.SessionID)
 		var missing []string
 		for _, required := range sessionState.Policy.RequiredAttestations {
-			if !findAttestation(attestDir, required) {
+			if usedTools[required] && !findAttestation(attestDir, required) {
 				missing = append(missing, required)
 			}
 		}
 		if len(missing) > 0 {
 			return output.Write(output.StopBlock(
-				fmt.Sprintf("[aflock] Cannot stop: missing required attestations: %v", missing)))
+				fmt.Sprintf("[aflock] Cannot stop: missing attestations for used tools: %v", missing)))
 		}
 	}
 

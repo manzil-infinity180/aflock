@@ -838,6 +838,13 @@ func TestHandleStop_MissingAttestation(t *testing.T) {
 	}
 	seedSession(t, h, "session-missing-attest", pol)
 
+	// Record that the tool was used — Stop only blocks for tools actually used
+	ss, _ := h.stateManager.Load("session-missing-attest")
+	h.stateManager.RecordAction(ss, aflock.ActionRecord{
+		ToolName: "security-review", Decision: "allow",
+	})
+	h.stateManager.Save(ss)
+
 	input := &aflock.HookInput{
 		SessionID: "session-missing-attest",
 	}
@@ -855,11 +862,49 @@ func TestHandleStop_MissingAttestation(t *testing.T) {
 	if out.Decision != "block" {
 		t.Errorf("expected block for missing attestation, got %q", out.Decision)
 	}
-	if !strings.Contains(out.Reason, "missing required attestations") {
-		t.Errorf("expected 'missing required attestations' in reason, got: %s", out.Reason)
+	if !strings.Contains(out.Reason, "missing attestations") {
+		t.Errorf("expected 'missing attestations' in reason, got: %s", out.Reason)
 	}
 	if !strings.Contains(out.Reason, "security-review") {
 		t.Errorf("expected 'security-review' in reason, got: %s", out.Reason)
+	}
+}
+
+func TestHandleStop_UnusedToolNotRequired(t *testing.T) {
+	h := newTestHandler(t)
+	pol := &aflock.Policy{
+		Name:                 "test-unused",
+		RequiredAttestations: []string{"Bash", "Read"},
+	}
+	seedSession(t, h, "session-unused-tool", pol)
+
+	// Only Read was used, Bash was never used
+	ss, _ := h.stateManager.Load("session-unused-tool")
+	h.stateManager.RecordAction(ss, aflock.ActionRecord{
+		ToolName: "Read", Decision: "allow",
+	})
+	h.stateManager.Save(ss)
+
+	// Create Read attestation
+	attestDir := h.stateManager.AttestationsDir("session-unused-tool")
+	os.MkdirAll(attestDir, 0755)
+	os.WriteFile(filepath.Join(attestDir, "Read.json"),
+		[]byte(`{"payload":"eyJ0ZXN0IjoidmFsaWQifQ==","payloadType":"application/vnd.in-toto+json","signatures":[{"keyid":"k","sig":"s"}]}`), 0644)
+
+	input := &aflock.HookInput{SessionID: "session-unused-tool"}
+
+	got := captureStdout(t, func() {
+		if err := h.handleStop(input); err != nil {
+			t.Fatalf("handleStop: %v", err)
+		}
+	})
+
+	var out aflock.HookOutput
+	if err := json.Unmarshal([]byte(got), &out); err != nil {
+		t.Fatalf("parse: %v (raw: %s)", err, got)
+	}
+	if out.Decision == "block" {
+		t.Errorf("expected allow when required tool was never used, got block: %s", out.Reason)
 	}
 }
 
@@ -1035,11 +1080,18 @@ func TestHandleStop_MultipleAttestations_OneMissing(t *testing.T) {
 	}
 	seedSession(t, h, "session-multi", pol)
 
+	// Record all three tools as used
+	ss, _ := h.stateManager.Load("session-multi")
+	h.stateManager.RecordAction(ss, aflock.ActionRecord{ToolName: "build", Decision: "allow"})
+	h.stateManager.RecordAction(ss, aflock.ActionRecord{ToolName: "test", Decision: "allow"})
+	h.stateManager.RecordAction(ss, aflock.ActionRecord{ToolName: "deploy", Decision: "allow"})
+	h.stateManager.Save(ss)
+
 	attestDir := h.stateManager.AttestationsDir("session-multi")
 	os.MkdirAll(attestDir, 0755)
 	os.WriteFile(filepath.Join(attestDir, "build.json"), []byte(`{}`), 0644)
 	os.WriteFile(filepath.Join(attestDir, "test.json"), []byte(`{}`), 0644)
-	// "deploy" is missing
+	// "deploy" was used but attestation is missing — should block
 
 	input := &aflock.HookInput{SessionID: "session-multi"}
 
