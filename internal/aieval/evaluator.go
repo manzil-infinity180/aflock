@@ -42,11 +42,11 @@ var anthropicURL = "https://api.anthropic.com/v1/messages"
 type EvalResult struct {
 	Name      string `json:"name"`
 	Passed    bool   `json:"passed"`
-	Status    string `json:"status"`            // "PASS", "FAIL", "INCONCLUSIVE", or "ERROR"
-	Reason    string `json:"reason"`             // explanation from the AI
-	Model     string `json:"model"`              // model used
-	Backend   string `json:"backend"`            // "anthropic" or "ollama"
-	TokensIn  int    `json:"tokensIn,omitempty"` // input tokens used
+	Status    string `json:"status"`              // "PASS", "FAIL", "INCONCLUSIVE", or "ERROR"
+	Reason    string `json:"reason"`              // explanation from the AI
+	Model     string `json:"model"`               // model used
+	Backend   string `json:"backend"`             // "anthropic" or "ollama"
+	TokensIn  int    `json:"tokensIn,omitempty"`  // input tokens used
 	TokensOut int    `json:"tokensOut,omitempty"` // output tokens used
 }
 
@@ -175,7 +175,7 @@ func evaluateAnthropic(ctx context.Context, pol Policy, materialsJSON []byte, ap
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Anthropic API request failed: %w", err)
+		return nil, fmt.Errorf("anthropic API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -185,7 +185,7 @@ func evaluateAnthropic(ctx context.Context, pol Policy, materialsJSON []byte, ap
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Anthropic API returned status %d: %s", resp.StatusCode, truncate(string(body), 200))
+		return nil, fmt.Errorf("anthropic API returned status %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
 
 	var apiResp anthropicResponse
@@ -272,7 +272,7 @@ func evaluateOllama(ctx context.Context, pol Policy, materialsJSON []byte) (*Eva
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Ollama API request failed: %w", err)
+		return nil, fmt.Errorf("ollama API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -282,7 +282,7 @@ func evaluateOllama(ctx context.Context, pol Policy, materialsJSON []byte) (*Eva
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Ollama API returned status %d: %s", resp.StatusCode, truncate(string(body), 200))
+		return nil, fmt.Errorf("ollama API returned status %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
 
 	var ollamaResp ollamaResponse

@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/open-policy-agent/opa/ast"
-	"github.com/open-policy-agent/opa/rego"
+	"github.com/open-policy-agent/opa/ast"  //nolint:staticcheck // TODO: migrate to opa/v1
+	"github.com/open-policy-agent/opa/rego" //nolint:staticcheck // TODO: migrate to opa/v1
 )
 
 const evalTimeout = 30 * time.Second

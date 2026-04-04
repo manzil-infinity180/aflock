@@ -14,14 +14,14 @@ import (
 // Fulcio certificate extension OIDs.
 // See: https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md
 var (
-	oidFulcioIssuer              = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 1}
-	oidFulcioBuildSignerURI      = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 8}
-	oidFulcioBuildSignerDigest   = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 9}
-	oidFulcioRunnerEnvironment   = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 10}
-	oidFulcioBuildTrigger        = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 11}
-	oidFulcioSourceRepoURI       = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 12}
-	oidFulcioSourceRepoRef       = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 14}
-	oidFulcioSourceRepoOwnerURI  = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 17}
+	oidFulcioIssuer             = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 1}
+	oidFulcioBuildSignerURI     = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 8}
+	oidFulcioBuildSignerDigest  = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 9}
+	oidFulcioRunnerEnvironment  = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 10}
+	oidFulcioBuildTrigger       = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 11}
+	oidFulcioSourceRepoURI      = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 12}
+	oidFulcioSourceRepoRef      = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 14}
+	oidFulcioSourceRepoOwnerURI = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 57264, 1, 17}
 )
 
 // fulcioCertExtensions holds parsed Fulcio certificate extension values.

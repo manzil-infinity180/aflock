@@ -210,8 +210,8 @@ func TestTreeBuilder_Count(t *testing.T) {
 		t.Errorf("Count = %d, want 0", builder.Count())
 	}
 
-	builder.Append([]byte(`{"a":1}`))
-	builder.Append([]byte(`{"b":2}`))
+	_ = builder.Append([]byte(`{"a":1}`))
+	_ = builder.Append([]byte(`{"b":2}`))
 	if builder.Count() != 2 {
 		t.Errorf("Count = %d, want 2", builder.Count())
 	}
@@ -274,14 +274,14 @@ func TestBuildRoot_RealisticSessionData(t *testing.T) {
 	// Simulate real aflock ActionRecord entries
 	actions := []map[string]any{
 		{
-			"timestamp": "2026-03-19T10:00:00Z",
-			"tool_name": "Read",
+			"timestamp":   "2026-03-19T10:00:00Z",
+			"tool_name":   "Read",
 			"tool_use_id": "tu_001",
-			"decision":  "allow",
+			"decision":    "allow",
 		},
 		{
-			"timestamp": "2026-03-19T10:00:05Z",
-			"tool_name": "Edit",
+			"timestamp":   "2026-03-19T10:00:05Z",
+			"tool_name":   "Edit",
 			"tool_use_id": "tu_002",
 			"tool_input": map[string]any{
 				"file_path":  "/src/main.go",
@@ -291,8 +291,8 @@ func TestBuildRoot_RealisticSessionData(t *testing.T) {
 			"decision": "allow",
 		},
 		{
-			"timestamp": "2026-03-19T10:00:10Z",
-			"tool_name": "Bash",
+			"timestamp":   "2026-03-19T10:00:10Z",
+			"tool_name":   "Bash",
 			"tool_use_id": "tu_003",
 			"tool_input": map[string]any{
 				"command": "go test ./...",

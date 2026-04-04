@@ -35,8 +35,8 @@ type AflockClaims struct {
 	IdentityHash string `json:"identity_hash"`
 
 	// Scoped grants
-	AllowedTools []string           `json:"allowed_tools,omitempty"`
-	DeniedTools  []string           `json:"denied_tools,omitempty"`
+	AllowedTools []string             `json:"allowed_tools,omitempty"`
+	DeniedTools  []string             `json:"denied_tools,omitempty"`
 	Limits       *aflock.LimitsPolicy `json:"limits,omitempty"`
 
 	// Policy binding — token is only valid for the policy it was issued against

@@ -38,9 +38,9 @@ const (
 
 // Signer creates and signs attestations.
 type Signer struct {
-	spireClient    *identity.SpireClient
-	identity       *identity.Identity
-	modelName      string
+	spireClient      *identity.SpireClient
+	identity         *identity.Identity
+	modelName        string
 	fulcioX509Signer *cryptoutil.X509Signer // Non-nil when using Fulcio keyless signing
 }
 

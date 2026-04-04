@@ -32,7 +32,7 @@ func TestVerifyAttenuation_Valid(t *testing.T) {
 	}
 	child := &aflock.LimitsPolicy{
 		MaxSpendUSD: &aflock.Limit{Value: 5.0}, // ≤ parent
-		MaxTurns:    &aflock.Limit{Value: 20},   // ≤ parent
+		MaxTurns:    &aflock.Limit{Value: 20},  // ≤ parent
 	}
 	violations := verifyAttenuation(parent, child)
 	if len(violations) != 0 {
@@ -69,8 +69,8 @@ func TestVerifyAttenuation_MultipleViolations(t *testing.T) {
 	}
 	child := &aflock.LimitsPolicy{
 		MaxSpendUSD:        &aflock.Limit{Value: 10.0}, // violation
-		MaxTurns:           &aflock.Limit{Value: 50},    // violation
-		MaxWallTimeSeconds: &aflock.Limit{Value: 300},   // OK
+		MaxTurns:           &aflock.Limit{Value: 50},   // violation
+		MaxWallTimeSeconds: &aflock.Limit{Value: 300},  // OK
 	}
 	violations := verifyAttenuation(parent, child)
 	if len(violations) != 2 {

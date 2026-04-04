@@ -134,7 +134,8 @@ func TestAlgorithmConfusion(t *testing.T) {
 	// Sign with the public key bytes as HMAC secret (classic algorithm confusion attack)
 	ecdsaPub, ok := issuer.PublicKey().(*ecdsa.PublicKey)
 	require.True(t, ok)
-	pubBytes := elliptic.Marshal(ecdsaPub.Curve, ecdsaPub.X, ecdsaPub.Y)
+	ecdhPub, _ := ecdsaPub.ECDH()
+	pubBytes := ecdhPub.Bytes()
 	tokenStr, err := hmacToken.SignedString(pubBytes)
 	require.NoError(t, err)
 

@@ -113,8 +113,8 @@ func mockAnthropicServer(t *testing.T, status, reason string) *httptest.Server {
 		}
 		responseText := `{"status": "` + status + `", "reason": "` + reason + `"}`
 		resp := map[string]any{
-			"content":    []map[string]any{{"type": "text", "text": responseText}},
-			"usage":      map[string]any{"input_tokens": 150, "output_tokens": 30},
+			"content":     []map[string]any{{"type": "text", "text": responseText}},
+			"usage":       map[string]any{"input_tokens": 150, "output_tokens": 30},
 			"stop_reason": "end_turn",
 		}
 		json.NewEncoder(w).Encode(resp)
