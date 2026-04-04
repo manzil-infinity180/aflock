@@ -478,6 +478,31 @@ func (h *Handler) createAttestation(sessionState *aflock.SessionState, input *af
 	} else {
 		// Saved identity has unknown model — try fresh discovery
 		agentIdentity, _ = identity.DiscoverAgentIdentity()
+
+		// Persist re-discovered identity back to session state so state.json
+		// stays consistent with attestations (fixes "unknown" model lingering).
+		if agentIdentity != nil && agentIdentity.Model != "" && agentIdentity.Model != "unknown" {
+			sessionState.AgentIdentityMeta = &aflock.AgentIdentityMeta{
+				Model:        agentIdentity.Model,
+				ModelVersion: agentIdentity.ModelVersion,
+				IdentityHash: agentIdentity.IdentityHash,
+				PolicyDigest: agentIdentity.PolicyDigest,
+				Environment: func() string {
+					if agentIdentity.Environment != nil {
+						return agentIdentity.Environment.Type
+					}
+					return ""
+				}(),
+			}
+			if agentIdentity.Binary != nil {
+				sessionState.AgentIdentityMeta.BinaryName = agentIdentity.Binary.Name
+				sessionState.AgentIdentityMeta.BinaryVer = agentIdentity.Binary.Version
+				sessionState.AgentIdentityMeta.BinaryDigest = agentIdentity.Binary.Digest
+			}
+			if err := h.stateManager.Save(sessionState); err != nil {
+				fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to persist re-discovered identity: %v\n", err)
+			}
+		}
 	}
 
 	// Create signer — try SPIRE first, then Fulcio keyless, fall back to ephemeral key

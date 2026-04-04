@@ -444,6 +444,18 @@ func (e *Evaluator) evaluateFileAccess(toolName string, toolInput json.RawMessag
 			}
 		}
 
+		// ReadOnly files are implicitly allowed for read operations.
+		// If a file is in readOnly, the user clearly intends it to be readable —
+		// requiring it to also be in files.allow is redundant and error-prone.
+		if !allowed && isReadOperation(toolName) {
+			for _, pattern := range e.policy.Files.ReadOnly {
+				if e.matchFilePattern(pattern, variants) {
+					allowed = true
+					break
+				}
+			}
+		}
+
 		// For directory tools (Glob, Grep), if the path is the project root (".")
 		// or resolves to it, allow the search. These tools scan directories and return
 		// results — they don't write or modify files. The deny patterns above already
