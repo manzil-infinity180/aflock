@@ -1353,7 +1353,8 @@ func TestFindAttestation_EmptyDir(t *testing.T) {
 
 func TestFindAttestation_ExactMatch(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "myattest.json"), []byte(`{}`), 0644)
+	validDSSE := `{"payload":"dGVzdA==","payloadType":"application/vnd.in-toto+json","signatures":[{"keyid":"k","sig":"s"}]}`
+	os.WriteFile(filepath.Join(dir, "myattest.json"), []byte(validDSSE), 0644)
 	if !findAttestation(dir, "myattest") {
 		t.Error("expected true for exact .json match")
 	}
@@ -1361,7 +1362,8 @@ func TestFindAttestation_ExactMatch(t *testing.T) {
 
 func TestFindAttestation_IntotoMatch(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "step1.intoto.json"), []byte(`{}`), 0644)
+	validDSSE := `{"payload":"dGVzdA==","payloadType":"application/vnd.in-toto+json","signatures":[{"keyid":"k","sig":"s"}]}`
+	os.WriteFile(filepath.Join(dir, "step1.intoto.json"), []byte(validDSSE), 0644)
 	if !findAttestation(dir, "step1") {
 		t.Error("expected true for exact .intoto.json match")
 	}
@@ -1370,12 +1372,14 @@ func TestFindAttestation_IntotoMatch(t *testing.T) {
 func TestFindAttestation_ContentMatch(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create an envelope whose payload's predicate has toolName "Build"
+	// Create a valid DSSE envelope whose payload's predicate has toolName "Build"
 	predicate := map[string]string{"toolName": "Build"}
 	stmt := map[string]interface{}{"predicate": predicate}
 	stmtBytes, _ := json.Marshal(stmt)
-	env := map[string]string{
-		"payload": base64.StdEncoding.EncodeToString(stmtBytes),
+	env := map[string]interface{}{
+		"payload":     base64.StdEncoding.EncodeToString(stmtBytes),
+		"payloadType": "application/vnd.in-toto+json",
+		"signatures":  []map[string]string{{"keyid": "k", "sig": "s"}},
 	}
 	envBytes, _ := json.Marshal(env)
 
@@ -1395,8 +1399,10 @@ func TestFindAttestation_CaseInsensitive(t *testing.T) {
 	predicate := map[string]string{"toolName": "bash"}
 	stmt := map[string]interface{}{"predicate": predicate}
 	stmtBytes, _ := json.Marshal(stmt)
-	env := map[string]string{
-		"payload": base64.StdEncoding.EncodeToString(stmtBytes),
+	env := map[string]interface{}{
+		"payload":     base64.StdEncoding.EncodeToString(stmtBytes),
+		"payloadType": "application/vnd.in-toto+json",
+		"signatures":  []map[string]string{{"keyid": "k", "sig": "s"}},
 	}
 	envBytes, _ := json.Marshal(env)
 
@@ -2117,7 +2123,14 @@ func TestHandleStop_FakeAttestationRejected(t *testing.T) {
 		Name:                 "test-fake-attest",
 		RequiredAttestations: []string{"security-review"},
 	}
-	seedSession(t, h, "session-fake-attest", pol)
+	ss := seedSession(t, h, "session-fake-attest", pol)
+
+	// Record an action so the tool counts as "used" — handleStop only checks
+	// requiredAttestations for tools that were actually invoked.
+	h.stateManager.RecordAction(ss, aflock.ActionRecord{
+		ToolName: "security-review", Decision: "allow",
+	})
+	h.stateManager.Save(ss)
 
 	attestDir := h.stateManager.AttestationsDir("session-fake-attest")
 	os.MkdirAll(attestDir, 0755)
@@ -2140,8 +2153,8 @@ func TestHandleStop_FakeAttestationRejected(t *testing.T) {
 	if out.Decision != "block" {
 		t.Errorf("expected block for fake attestation file, got %q", out.Decision)
 	}
-	if !strings.Contains(out.Reason, "missing required attestations") {
-		t.Errorf("expected 'missing required attestations' in reason, got: %s", out.Reason)
+	if !strings.Contains(out.Reason, "missing attestations") {
+		t.Errorf("expected 'missing attestations' in reason, got: %s", out.Reason)
 	}
 }
 
@@ -2151,7 +2164,13 @@ func TestHandleStop_EmptySignaturesRejected(t *testing.T) {
 		Name:                 "test-empty-sig",
 		RequiredAttestations: []string{"build"},
 	}
-	seedSession(t, h, "session-empty-sig", pol)
+	ss := seedSession(t, h, "session-empty-sig", pol)
+
+	// Record an action so the tool counts as "used"
+	h.stateManager.RecordAction(ss, aflock.ActionRecord{
+		ToolName: "build", Decision: "allow",
+	})
+	h.stateManager.Save(ss)
 
 	attestDir := h.stateManager.AttestationsDir("session-empty-sig")
 	os.MkdirAll(attestDir, 0755)

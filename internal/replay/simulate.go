@@ -277,7 +277,7 @@ func parseModelVersion(model string) string {
 func (r *SimulateReport) FormatSimulateText() string {
 	var b strings.Builder
 
-	b.WriteString(r.Report.FormatText())
+	b.WriteString(r.FormatText())
 
 	b.WriteString("\n")
 	b.WriteString(strings.Repeat("━", 60) + "\n")

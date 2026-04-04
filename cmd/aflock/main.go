@@ -583,7 +583,7 @@ Examples:
 
 			switch replayFormat {
 			case "json":
-				output, err := simReport.Report.FormatJSON()
+				output, err := simReport.FormatJSON()
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error formatting JSON: %v\n", err)
 					os.Exit(1)
