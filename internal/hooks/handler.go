@@ -130,11 +130,12 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 	}
 	kernelSandboxDetected := nonoSupervisor != nil
 	if pol.RequireKernelSandbox && !kernelSandboxDetected {
-		output.ExitWithError("[aflock] Policy requires a kernel sandbox (nono) but no nono supervisor was detected in the parent process tree. Start aflock under nono or remove \"requireKernelSandbox\".")
+		output.ExitWithError(`[aflock] Policy requires a kernel sandbox (nono) but no nono supervisor was detected in the parent process tree. Start aflock under nono or remove "requireKernelSandbox".`)
 		return nil
 	}
 	if shouldWarnMissingKernelSandbox(pol, kernelSandboxDetected) {
-		fmt.Fprintln(os.Stderr, "[aflock] WARNING: Policy contains deny/approval rules enforced only by aflock. Without a kernel sandbox (e.g., nono), subagents using native tools can bypass these restrictions. Run under nono, or set requireKernelSandbox: true to block startup when nono is missing.")
+		fmt.Fprintln(os.Stderr, "[aflock] WARNING: Policy contains deny/approval rules enforced only by aflock.")
+		fmt.Fprintln(os.Stderr, "[aflock] WARNING: Without a kernel sandbox (e.g., nono), native subagents can bypass them. Run under nono, or set requireKernelSandbox: true to block startup when nono is missing.")
 	}
 
 	// Discover agent identity. If the policy has identity constraints

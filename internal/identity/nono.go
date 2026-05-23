@@ -17,7 +17,7 @@ type NonoSupervisor struct {
 // detected nono supervisor process.
 func DetectNonoSupervisor() (*NonoSupervisor, error) {
 	ppid := os.Getppid()
-	if ppid <= 1 {
+	if ppid < 1 {
 		return nil, nil
 	}
 
