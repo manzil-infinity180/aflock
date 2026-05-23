@@ -101,6 +101,18 @@ Follow the principle of least privilege — all access denied unless explicitly 
 - `deny`: Tools that are always blocked
 - `requireApproval`: Patterns that require human confirmation
 
+## Kernel Sandbox Requirement
+
+Tool-level enforcement can be bypassed by native subagents. Use the kernel sandbox requirement to refuse startup unless a nono supervisor is detected:
+
+```json
+{
+  "requireKernelSandbox": true
+}
+```
+
+When set, `SessionStart` will fail fast if aflock is not running under nono. See [Defense in Depth](./defense-in-depth.md) for the rationale.
+
 ## File Access
 
 ```json

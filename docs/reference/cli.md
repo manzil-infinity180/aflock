@@ -39,6 +39,10 @@ aflock hook <event>
 | `SubagentStop` | Sub-agent stops | Check sublayout constraints |
 | `SessionEnd` | Session ends | Final verification |
 
+#### Kernel sandbox checks
+
+On `SessionStart`, aflock walks the parent process tree to detect a nono supervisor. If the policy includes deny/approval rules and no kernel sandbox is detected, aflock emits a loud warning. If the policy sets `"requireKernelSandbox": true`, `SessionStart` exits with an error unless nono is present.
+
 ### `aflock verify`
 
 Verify attestations against a policy.

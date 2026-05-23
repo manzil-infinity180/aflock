@@ -124,6 +124,20 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 		return nil
 	}
 
+	nonoSupervisor, nonoErr := identity.DetectNonoSupervisor()
+	if nonoErr != nil {
+		fmt.Fprintf(os.Stderr, "[aflock] Warning: failed to detect nono supervisor: %v\n", nonoErr)
+	}
+	kernelSandboxDetected := nonoSupervisor != nil
+	if pol.RequireKernelSandbox && !kernelSandboxDetected {
+		output.ExitWithError("[aflock] Policy requires a kernel sandbox (nono) but no nono supervisor was detected in the parent process tree. Start aflock under nono or remove requireKernelSandbox.")
+		return nil
+	}
+	if shouldWarnMissingKernelSandbox(pol, kernelSandboxDetected) {
+		fmt.Fprintln(os.Stderr, "[aflock] WARNING: Policy contains deny/approval rules enforced only by aflock.\n"+
+			"[aflock] WARNING: Without a kernel sandbox (e.g., nono), native subagents can bypass them. Run under nono, or set requireKernelSandbox: true to block startup when nono is missing.")
+	}
+
 	// Discover agent identity. If the policy has identity constraints
 	// (AllowedModels), a discovery failure must block the session — otherwise
 	// the constraint is silently bypassed (issue #60 / H7).
@@ -220,6 +234,37 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 	// Build context to inject
 	context := h.buildPolicyContext(pol, agentIdentity)
 	return output.Write(output.SessionStartContext(context))
+}
+
+func shouldWarnMissingKernelSandbox(pol *aflock.Policy, kernelSandboxDetected bool) bool {
+	if kernelSandboxDetected {
+		return false
+	}
+	return policyHasKernelBypassableRestrictions(pol)
+}
+
+func policyHasKernelBypassableRestrictions(pol *aflock.Policy) bool {
+	if pol == nil {
+		return false
+	}
+
+	if pol.Tools != nil {
+		if len(pol.Tools.Deny) > 0 || len(pol.Tools.RequireApproval) > 0 {
+			return true
+		}
+	}
+	if pol.Files != nil {
+		if len(pol.Files.Deny) > 0 || len(pol.Files.ReadOnly) > 0 {
+			return true
+		}
+	}
+	if pol.Domains != nil {
+		if len(pol.Domains.Deny) > 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // buildPolicyContext creates context string describing the active policy.

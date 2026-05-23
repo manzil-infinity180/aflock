@@ -137,6 +137,11 @@ type Policy struct {
 	Name    string     `json:"name"`
 	Expires *time.Time `json:"expires,omitempty"`
 
+	// RequireKernelSandbox enforces that aflock runs under a kernel-level sandbox
+	// supervisor (e.g., nono). When true, sessions refuse to start unless the
+	// supervisor is detected in the parent process tree.
+	RequireKernelSandbox bool `json:"requireKernelSandbox,omitempty"`
+
 	// Attestation verification fields (evaluated at verification time)
 	Roots map[string]Root `json:"roots,omitempty"` // CA roots for signature verification
 	Steps map[string]Step `json:"steps,omitempty"` // Required steps with functionaries and attestations

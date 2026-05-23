@@ -106,7 +106,10 @@ We consider an adversarial agent that attempts to:
     \item \textbf{Policy signer authenticity}: Policies are signed by authorized principals (humans or trusted systems)
     \item \textbf{Transport security}: MCP communication occurs over authenticated channels
     \item \textbf{Process isolation}: The OS enforces process boundaries (agents cannot inspect other processes' memory)
+    \item \textbf{Tool-call mediation}: Agent actions are routed through aflock's MCP tool gate. Native subagent execution can bypass tool-level enforcement without a kernel sandbox.
 \end{enumerate}
+
+For stronger guarantees, run aflock inside a kernel-enforced sandbox (e.g., nono) so filesystem and network restrictions apply to all descendant processes.
 
 We explicitly \textbf{do not} assume:
 \begin{itemize}[noitemsep]
