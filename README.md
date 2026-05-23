@@ -68,6 +68,12 @@ The agent **presents** the JWT but **cannot sign** attestations. All signatures 
 
 Based on [SPIRE](https://github.com/spiffe/spire) architecture - battle-tested workload identity.
 
+## Defense in Depth (Kernel Sandbox)
+
+aflock enforces policy at the MCP tool layer. If an agent spawns native subagents (e.g., `Task`/`Agent`) those tools can bypass aflock-uds entirely. For production deployments, run aflock under a kernel-enforced sandbox such as [nono](https://github.com/always-further/nono) so that **all** child processes inherit a filesystem/network floor.
+
+Policies can set `"requireKernelSandbox": true` to refuse startup unless a nono supervisor is detected. See [Defense in Depth](docs/concepts/defense-in-depth.md) for details.
+
 ## Example Policy
 
 ```json
