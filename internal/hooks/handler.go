@@ -134,7 +134,7 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 		return nil
 	}
 	if shouldWarnMissingKernelSandbox(pol, kernelSandboxDetected) {
-		fmt.Fprintln(os.Stderr, "[aflock] WARNING: Policy contains deny/approval rules enforced only by aflock. Without a kernel sandbox (e.g., nono), subagents using native tools can bypass these restrictions. Run under nono or set requireKernelSandbox to enforce this.")
+		fmt.Fprintln(os.Stderr, "[aflock] WARNING: Policy contains deny/approval rules enforced only by aflock. Without a kernel sandbox (e.g., nono), subagents using native tools can bypass these restrictions. Run under nono, or set requireKernelSandbox: true to block startup when nono is missing.")
 	}
 
 	// Discover agent identity. If the policy has identity constraints
@@ -239,10 +239,10 @@ func shouldWarnMissingKernelSandbox(pol *aflock.Policy, kernelSandboxDetected bo
 	if kernelSandboxDetected {
 		return false
 	}
-	return policyHasKernelBypassableDenies(pol)
+	return policyHasKernelBypassableRestrictions(pol)
 }
 
-func policyHasKernelBypassableDenies(pol *aflock.Policy) bool {
+func policyHasKernelBypassableRestrictions(pol *aflock.Policy) bool {
 	if pol == nil {
 		return false
 	}

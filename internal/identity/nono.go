@@ -46,19 +46,11 @@ func DetectNonoSupervisor() (*NonoSupervisor, error) {
 
 func isNonoSupervisorCommand(cmd string) bool {
 	lower := strings.ToLower(strings.TrimSpace(cmd))
-	if lower == "" {
-		return false
-	}
-
 	fields := strings.Fields(lower)
 	if len(fields) == 0 {
 		return false
 	}
 
 	base := filepath.Base(fields[0])
-	if base == "nono" || base == "nono-supervisor" {
-		return true
-	}
-
-	return strings.Contains(lower, "nono-supervisor")
+	return base == "nono" || base == "nono-supervisor"
 }

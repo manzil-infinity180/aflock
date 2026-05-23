@@ -6,7 +6,7 @@ import (
 	"github.com/aflock-ai/aflock/pkg/aflock"
 )
 
-func TestPolicyHasKernelBypassableDenies(t *testing.T) {
+func TestPolicyHasKernelBypassableRestrictions(t *testing.T) {
 	tests := []struct {
 		name     string
 		policy   *aflock.Policy
@@ -65,7 +65,7 @@ func TestPolicyHasKernelBypassableDenies(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := policyHasKernelBypassableDenies(test.policy); got != test.expected {
+			if got := policyHasKernelBypassableRestrictions(test.policy); got != test.expected {
 				t.Fatalf("expected %v, got %v", test.expected, got)
 			}
 		})
