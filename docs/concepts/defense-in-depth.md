@@ -8,7 +8,7 @@ aflock enforces policy at the **tool layer**: it approves or blocks MCP tool cal
 
 ## Threat Model Boundary
 
-The enforcement boundary is the MCP tool gate. If an agent can execute **native** tools outside aflock (for example via Claude Code `Task`/`Agent` subagents), those actions can bypass tool-level enforcement. This is the core risk highlighted in issue #100.
+The enforcement boundary is the MCP tool gate. If an agent can execute **native** tools outside aflock (for example via Claude Code `Task`/`Agent` subagents), those actions can bypass tool-level enforcement. This is the core risk highlighted in [issue #100](https://github.com/aflock-ai/aflock/issues/100) (subagent bypass of tool enforcement).
 
 ## How Kernel Sandboxing Closes the Gap
 

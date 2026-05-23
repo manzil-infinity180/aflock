@@ -130,7 +130,7 @@ func (h *Handler) handleSessionStart(input *aflock.HookInput) error {
 	}
 	kernelSandboxDetected := nonoSupervisor != nil
 	if pol.RequireKernelSandbox && !kernelSandboxDetected {
-		output.ExitWithError("[aflock] Policy requires a kernel sandbox (nono) but no nono supervisor was detected in the parent process tree. Start aflock under nono or remove requireKernelSandbox.")
+		output.ExitWithError("[aflock] Policy requires a kernel sandbox (nono) but no nono supervisor was detected in the parent process tree. Start aflock under nono or remove \"requireKernelSandbox\".")
 		return nil
 	}
 	if shouldWarnMissingKernelSandbox(pol, kernelSandboxDetected) {
