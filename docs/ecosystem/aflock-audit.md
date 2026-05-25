@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Aflock Audit (Forensics UI)
 
-This document captures the plan for a **separate project** that provides a local-first, browser-native forensics UI for aflock session evidence. Working name: **aflock-audit** (preferred; *aflock-forensics* appears only as an older alternative name).
+This document captures the plan for a **separate project** that provides a local-first, browser-native forensics UI for aflock session evidence. Working name: **aflock-audit**.
 
 ## Why a separate project
 
@@ -39,7 +39,7 @@ The forensics UI should reuse the same Go parsing logic already implemented in `
 - `SessionInfo`, `SessionState`, `IdentityMeta`
 - `DSSEEnvelope`, `InTotoStatement`, `ActionPredicate`
 - Identity fallback chain: `state.Identity` → latest attestation → JWT claims (SPIFFE ID)
-- Latest attestation key ID heuristic (`/ephemeral/` vs SPIRE-rooted)
+- Latest attestation key ID heuristic (treat key IDs containing `/ephemeral/` as ephemeral; treat `spiffe://` key IDs as SPIRE-rooted)
 - Six-phase verifier JSON (`aflock verify --session <id>`)
 
 This keeps parsing stable and avoids re-deriving logic in the browser.
@@ -78,8 +78,8 @@ This keeps parsing stable and avoids re-deriving logic in the browser.
 
 ### Phase 3 — live + cross-stack
 
-- Live event stream (depends on manzil-infinity180/aflock#3)
-- Cross-stack rendering (aflock + nono attestation bundle, depends on manzil-infinity180/aflock#1)
+- Live event stream (depends on manzil-infinity180/aflock#3 adding the events server)
+- Cross-stack rendering (aflock + nono attestation bundle, depends on manzil-infinity180/aflock#1 for nono integration)
 - Fulcio cert + OID decoding, Rekor inclusion proof verification
 
 ### Phase 4 — exports & integrations
@@ -110,6 +110,7 @@ aflock-audit/
 ## Decisions needed before Phase 1 starts
 
 1. **Repo home**: personal incubation vs. aflock-ai org
-2. **Frontend stack**: React + Vite (default) vs. SolidJS/Svelte
-3. **Bundling**: ship as static SPA only, or also via `aflock-audit serve`
-4. **Sharing scope**: confirm static HTML export only (no multi-user backend)
+2. **Name**: standardize on **aflock-audit** (earlier notes used *aflock-forensics*)
+3. **Frontend stack**: React + Vite (default) vs. SolidJS/Svelte
+4. **Bundling**: ship as static SPA only, or also via `aflock-audit serve`
+5. **Sharing scope**: confirm static HTML export only (no multi-user backend)
