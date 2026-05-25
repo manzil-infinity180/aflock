@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Aflock Audit (Forensics UI)
 
-This document captures the plan for a **separate project** that provides a local-first, browser-native forensics UI for aflock session evidence. Working name: **aflock-audit** (also referred to as *aflock-forensics* in earlier notes).
+This document captures the plan for a **separate project** that provides a local-first, browser-native forensics UI for aflock session evidence. Working name: **aflock-audit** (preferred; *aflock-forensics* appears only as an older alias).
 
 ## Why a separate project
 
@@ -94,7 +94,7 @@ This keeps parsing stable and avoids re-deriving logic in the browser.
 aflock-audit/
 ├── web/                          # SPA
 │   ├── src/
-│   │   ├── pillars/              # session / attestation / audit views
+│   │   ├── views/                # session / attestation / audit pillar views
 │   │   ├── components/
 │   │   └── lib/
 │   │       ├── wasm/             # WASM bridge
@@ -113,4 +113,3 @@ aflock-audit/
 2. **Frontend stack**: React + Vite (default) vs. SolidJS/Svelte
 3. **Bundling**: ship as static SPA only, or also via `aflock-audit serve`
 4. **Sharing scope**: confirm static HTML export only (no multi-user backend)
-
