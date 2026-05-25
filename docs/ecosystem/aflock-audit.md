@@ -78,8 +78,8 @@ This keeps parsing stable and avoids re-deriving logic in the browser.
 
 ### Phase 3 — live + cross-stack
 
-- Live event stream (depends on manzil-infinity180/aflock#3 adding the events server; if the issue is not yet created, treat this as a planned dependency)
 - Cross-stack rendering (aflock + nono attestation bundle, depends on manzil-infinity180/aflock#1 for nono integration; if the issue is not yet created, treat this as a planned dependency)
+- Live event stream (depends on manzil-infinity180/aflock#3 adding the events server; if the issue is not yet created, treat this as a planned dependency)
 - Fulcio cert + OID decoding, Rekor inclusion proof verification
 
 ### Phase 4 — exports & integrations
@@ -109,7 +109,7 @@ aflock-audit/
 
 ## Decisions needed before Phase 1 starts
 
-1. **Repo home**: personal incubation vs. aflock-ai org
+1. **Repo home**: personal incubation (manzil-infinity180) vs. the upstream **aflock-ai** organization
 2. **Name**: standardize on **aflock-audit** (earlier notes used *aflock-forensics*)
 3. **Frontend stack**: React + Vite (default) vs. SolidJS/Svelte
 4. **Bundling**: ship as static SPA only, or also via `aflock-audit serve`
