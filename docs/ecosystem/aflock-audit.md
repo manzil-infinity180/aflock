@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Aflock Audit (Forensics UI)
 
-This document captures the plan for a **separate project** that provides a local-first, browser-native forensics UI for aflock session evidence. Working name: **aflock-audit** (preferred; *aflock-forensics* appears only as an older alias).
+This document captures the plan for a **separate project** that provides a local-first, browser-native forensics UI for aflock session evidence. Working name: **aflock-audit** (preferred; *aflock-forensics* appears only as an older alternative name).
 
 ## Why a separate project
 
@@ -19,7 +19,7 @@ The forensics UI has different users and goals than existing tools:
 - **Local-first**: open a browser tab, no daemon required.
 - **Evidence-first**: cryptographic verification is a primary column, not an afterthought.
 - **Shareable**: export a static HTML evidence package for regulator handoff.
-- **Single-user**: no multi-team backend (that is the separate `judge` direction).
+- **Single-user**: no multi-team backend (the separate **judge** direction is a centralized attestation collector and is intentionally out of scope).
 
 ## Existing data sources (no new schema required for Phase 1)
 
@@ -78,8 +78,8 @@ This keeps parsing stable and avoids re-deriving logic in the browser.
 
 ### Phase 3 — live + cross-stack
 
-- Live event stream (depends on aflock issue #3)
-- Cross-stack rendering (aflock + nono attestation bundle, depends on aflock issue #1)
+- Live event stream (depends on manzil-infinity180/aflock#3)
+- Cross-stack rendering (aflock + nono attestation bundle, depends on manzil-infinity180/aflock#1)
 - Fulcio cert + OID decoding, Rekor inclusion proof verification
 
 ### Phase 4 — exports & integrations
