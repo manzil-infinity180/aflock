@@ -19,7 +19,7 @@ The forensics UI has different users and goals than existing tools:
 - **Local-first**: open a browser tab, no daemon required.
 - **Evidence-first**: cryptographic verification is a primary column, not an afterthought.
 - **Shareable**: export a static HTML evidence package for regulator handoff.
-- **Single-user**: no multi-team backend (the separate **judge** direction is a centralized attestation collector and is intentionally out of scope).
+- **Single-user**: no multi-team backend (the separate **judge** direction is a centralized attestation collection platform; aflock-audit intentionally stays local-first).
 
 ## Existing data sources (no new schema required for Phase 1)
 
@@ -78,8 +78,8 @@ This keeps parsing stable and avoids re-deriving logic in the browser.
 
 ### Phase 3 — live + cross-stack
 
-- Live event stream (depends on manzil-infinity180/aflock#3 adding the events server)
-- Cross-stack rendering (aflock + nono attestation bundle, depends on manzil-infinity180/aflock#1 for nono integration)
+- Live event stream (depends on manzil-infinity180/aflock#3 adding the events server; if the issue is not yet created, treat this as a planned dependency)
+- Cross-stack rendering (aflock + nono attestation bundle, depends on manzil-infinity180/aflock#1 for nono integration; if the issue is not yet created, treat this as a planned dependency)
 - Fulcio cert + OID decoding, Rekor inclusion proof verification
 
 ### Phase 4 — exports & integrations
